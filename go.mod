@@ -3,11 +3,9 @@ module github.com/RestinGreen/polygon-arbitrage
 go 1.20
 
 require (
-	github.com/eiannone/keyboard v0.0.0-20220611211555-0d226195f203
 	github.com/ethereum/go-ethereum v1.11.5
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.7
-	golang.org/x/term v0.6.0
 )
 
 require (
@@ -27,6 +25,8 @@ require (
 	github.com/holiman/uint256 v1.2.0 // indirect
 	github.com/huin/goupnp v1.0.3 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
+	github.com/onsi/ginkgo v1.14.2 // indirect
+	github.com/onsi/gomega v1.10.3 // indirect
 	github.com/rjeczalik/notify v0.9.1 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect

@@ -22,6 +22,7 @@ func init() {
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
+			fmt.Println("asd")
 			exec.Command("stty", "-F", "/dev/tty", "echo").Run()
 		}
 	}()
@@ -36,6 +37,7 @@ func main() {
 
 	newFullTx := make(chan *types.Transaction)
 	dexMonitorCh := make(chan *types.Transaction)
+	// arbitrageCh := make(chan *types.Transaction)
 
 	_, err := subscriber.SubscribePendingFullTransactions(context.Background(), newFullTx)
 	if err != nil {

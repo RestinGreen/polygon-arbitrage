@@ -34,11 +34,11 @@ func NewGeneral() *General {
 
 	g.IpcEndpoint = os.Getenv("IPC_ENDPOINT")
 	g.InfuraEndpoint = os.Getenv("INFURA_ENDPOINT")
-	g.Host = os.Getenv("HOST")
-	g.Port = os.Getenv("PORT")
-	g.User = os.Getenv("USER")
-	g.Password = os.Getenv("PASSWORD")
-	g.DBName = os.Getenv("DBNAME")
+	g.Host = os.Getenv("PGSQL_HOST")
+	g.Port = os.Getenv("PGSQL_PORT")
+	g.User = os.Getenv("PGSQL_USER")
+	g.Password = os.Getenv("PGSQL_PASSWORD")
+	g.DBName = os.Getenv("PGSQL_DBNAME")
 
 	g.UniV2Methods = map[string]string{
 		"fb3bdb41": "swapETHForExactTokens",
@@ -51,5 +51,6 @@ func NewGeneral() *General {
 		"4a25d94a": "swapTokensForExactETH",
 		"8803dbee": "swapTokensForExactTokens",
 	}
+
 	return &g
 }
