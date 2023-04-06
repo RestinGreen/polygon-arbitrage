@@ -31,7 +31,7 @@ func NewDB(gen *general.General) *Database {
 	return &Database{db}
 }
 
-func (db *Database) GetAllDexs() []*types.Dex {
+func (db *Database) GetAllDexs() []*types.DexMemory {
 
 	query := `SELECT factory_address, router_address, num_pairs
 		FROM dexs`
@@ -43,7 +43,7 @@ func (db *Database) GetAllDexs() []*types.Dex {
 	}
 	defer rows.Close()
 
-	dexs := make([]*types.Dex, 0)
+	dexs := make([]*types.DexMemory, 0)
 	for rows.Next() {
 		var factory, router string
 		var numPairs int
@@ -51,12 +51,13 @@ func (db *Database) GetAllDexs() []*types.Dex {
 			fmt.Println("Error in scanning rows in 'GetAlLDexs'.", err)
 			return nil
 		}
-		dexs = append(dexs, &types.Dex{
-			Factory:   common.HexToAddress(factory),
-			Router:    common.HexToAddress(router),
-			NumPairs:  numPairs,
-			Pairs:     map[string]*types.Pair{},
-			PairMutex: map[string]*sync.Mutex{},
+		dexs = append(dexs, &types.DexMemory{
+			Factory:    common.HexToAddress(factory),
+			Router:     common.HexToAddress(router),
+			NumPairs:   numPairs,
+			SimplePair: map[common.Address]*types.SimplePair{},
+			Pairs:      map[string]*types.Pair{},
+			PairMutex:  map[string]*sync.Mutex{},
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -137,7 +138,7 @@ func (db *Database) UpdatePair(pairAddress string, reserve0 *big.Int, reserve1 *
 
 }
 
-func (db *Database) InsertFullDex(dex *types.Dex) {
+func (db *Database) InsertFullDex(dex *types.DexMemory) {
 	tx, err := db.db.Begin()
 	if err != nil {
 		fmt.Println("Failed to being transaction ", err)

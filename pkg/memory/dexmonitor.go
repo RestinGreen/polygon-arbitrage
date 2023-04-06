@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2factory"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
 	mem "github.com/RestinGreen/polygon-arbitrage/pkg/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -16,13 +18,14 @@ import (
 )
 
 type DexMonitor struct {
-	DexMemory DexMemory
+	DexMemory Memory
 	txChan    chan *types.Transaction
 	binding   *binding.Binding
 	read      *bind.CallOpts
 
 	//router is the key
 	monitorTracker map[common.Address]bool
+	eventWatchlist []common.Address
 
 	db          *database.Database
 	fullNode    *ethclient.Client
@@ -33,7 +36,7 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 
 	return &DexMonitor{
 		txChan:    txChan,
-		DexMemory: *NewDexMemory(),
+		DexMemory: *NewMemory(),
 		binding:   binding.NewBinding(fullNode),
 		read:      &bind.CallOpts{Pending: false},
 
@@ -48,8 +51,10 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 
 func (m *DexMonitor) Start() {
 
-	m.LoadFromDB()
-	if len(m.DexMemory.DexMap) > 0 {
+	m.loadFromDB()
+
+	if len(m.DexMemory.DexMemory) > 0 {
+		go m.listenPairSyncEvents()
 		go m.refreshDexData()
 	}
 
@@ -75,7 +80,7 @@ func (m *DexMonitor) Start() {
 				fmt.Println("to address is nil")
 				continue
 			}
-			if _, exists := m.DexMemory.DexMap[*routerAddress]; !exists {
+			if _, exists := m.DexMemory.DexMemory[*routerAddress]; !exists {
 				go m.loadNewDexDataFromChain(routerAddress)
 			} else {
 				//TODO get only new pair addresses
@@ -137,7 +142,7 @@ func (m *DexMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 	}
 	fmt.Println("Loading", numPairs, "pairs for factory", factoryAddress, "finished")
 	//save to db
-	m.db.InsertFullDex(m.DexMemory.DexMap[*routerAddress])
+	m.db.InsertFullDex(m.DexMemory.DexMemory[*routerAddress])
 
 }
 
@@ -167,19 +172,19 @@ func (m *DexMonitor) getPairData(pairAddress common.Address, factoryContract *un
 
 }
 
-func (m *DexMonitor) LoadFromDB() {
+func (m *DexMonitor) loadFromDB() {
 
 	fmt.Println("Loading database and creating bindings.")
 
 	var wg sync.WaitGroup
 	for _, dex := range m.db.GetAllDexs() {
 		m.DexMemory.AddDexStruct(dex)
-		go func(dex *mem.Dex) {
+		go func(dex *mem.DexMemory) {
 			wg.Add(1)
 			defer wg.Done()
 			m.binding.AddFactoryContract(dex.Factory)
 		}(dex)
-		go func(dex *mem.Dex) {
+		go func(dex *mem.DexMemory) {
 			wg.Add(1)
 			defer wg.Done()
 			m.binding.AddRouterContract(dex.Router)
@@ -197,16 +202,53 @@ func (m *DexMonitor) LoadFromDB() {
 	fmt.Println("Database loaded.")
 }
 
+func (m *DexMonitor) listenPairSyncEvents() {
+
+	// m.eventWatchlist = make([]common.Address, 0)
+
+	for _, dex := range m.DexMemory.DexMemory {
+		for _, pair := range dex.Pairs {
+			m.eventWatchlist = append(m.eventWatchlist, pair.PairAddress)
+		}
+	}
+
+	fmt.Println("There are", len(m.eventWatchlist), "pairs to watch.")
+	query := ethereum.FilterQuery{
+		Addresses: m.eventWatchlist,
+		Topics:    [][]common.Hash{{common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1")}},
+	}
+
+	logsCh := make(chan types.Log)
+
+	subscribtion, err := m.fullNode.SubscribeFilterLogs(context.Background(), query, logsCh)
+	if err != nil {
+		fmt.Println("Error subscribing to events.")
+		panic(err)
+	}
+
+	for {
+		select {
+		case err := <-subscribtion.Err():
+			panic(err)
+		case log := <-logsCh:
+			// r0 := new(big.Int).SetBytes(log.Data[0:32])
+			// r1 := new(big.Int).SetBytes(log.Data[32:64])
+			fmt.Println("Pair", log.Address, "updated in block", log.BlockNumber)
+		}
+	}
+
+}
+
 func (m *DexMonitor) refreshDexData() {
 	fmt.Println("Refreshing started.")
-	for _, dex := range m.DexMemory.DexMap {
-		for _, pair := range m.DexMemory.DexMap[dex.Router].Pairs {
+	for _, dex := range m.DexMemory.DexMemory {
+		for _, pair := range m.DexMemory.PairMemory[dex.Router].Pairs {
 			newPairData, err := m.binding.GetPairContract(pair.PairAddress).GetReserves(m.read)
 			if err != nil {
 				fmt.Println("Failed to get reservers in refreshing.", err)
 				continue
 			}
-			go func(pair *mem.Pair, dex *mem.Dex) {
+			go func(pair *mem.Pair, dex *mem.DexMemory) {
 				if pair.LastUpdated < newPairData.BlockTimestampLast {
 					fmt.Println("Updating", pair.LastUpdated, " -> ", newPairData.BlockTimestampLast)
 					dex.PairMutex[getPairKey(pair)].Lock()
@@ -226,7 +268,7 @@ func getPairKey(pair *mem.Pair) string {
 	return pair.Token0Address.Hex() + pair.Token1Address.Hex()
 }
 
-func (m *DexMemory) dbSaverJob() {
+func (m *Memory) dbSaverJob() {
 
 }
 

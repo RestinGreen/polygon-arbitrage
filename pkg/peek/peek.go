@@ -10,7 +10,7 @@ import (
 )
 
 type Peek struct {
-	dexMemory *memory.DexMemory
+	dexMemory *memory.Memory
 }
 
 func NewPeek() *Peek {
@@ -18,7 +18,7 @@ func NewPeek() *Peek {
 	return &Peek{}
 }
 
-func (p *Peek) SetDexMemory(dexMemory *memory.DexMemory) {
+func (p *Peek) SetDexMemory(dexMemory *memory.Memory) {
 
 	p.dexMemory = dexMemory
 }
@@ -47,7 +47,7 @@ func (p *Peek) StartPeek() {
 				switch stdin {
 				case "l":
 					fmt.Println("-----------------------------------------------------")
-					for router, v := range p.dexMemory.DexMap {
+					for router, v := range p.dexMemory.DexMemory {
 						fmt.Println(router)
 						fmt.Println("\t", v.Factory)
 						fmt.Println("\t pairs")
@@ -64,8 +64,8 @@ func (p *Peek) StartPeek() {
 					}
 					fmt.Println("-----------------------------------------------------")
 				case "c":
-					fmt.Println("Factories: ", len(p.dexMemory.DexMap))
-					for _, f := range p.dexMemory.DexMap {
+					fmt.Println("Factories: ", len(p.dexMemory.DexMemory))
+					for _, f := range p.dexMemory.DexMemory {
 						fmt.Println("Factory", f.Factory, "has", len(f.Pairs), "pairs.")
 					}
 				case "q":
