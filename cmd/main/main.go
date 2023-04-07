@@ -47,10 +47,10 @@ func main() {
 	newBlocks := make(chan *types.Header)
 	fullNode.EthClient.SubscribeNewHead(context.Background(), newBlocks)
 
-	dexMonitor := memory.NewDexMonirot(dexMonitorCh, fullNode.EthClient, archiveNode.EthClient, db)
-	go dexMonitor.Start()
+	monitor := memory.NewDexMonirot(dexMonitorCh, fullNode.EthClient, archiveNode.EthClient, db)
+	go monitor.Start()
 	peek := peek.NewPeek()
-	peek.SetDexMemory(&dexMonitor.DexMemory)
+	peek.SetDexMemory(monitor.Memory)
 	peek.StartPeek()
 
 	for tx := range newFullTx {

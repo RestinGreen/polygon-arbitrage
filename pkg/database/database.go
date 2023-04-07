@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	_ "github.com/lib/pq"
@@ -31,33 +30,34 @@ func NewDB(gen *general.General) *Database {
 	return &Database{db}
 }
 
-func (db *Database) GetAllDexs() []*types.DexMemory {
+func (db *Database) GetAllData() []*types.Dex {
 
-	query := `SELECT factory_address, router_address, num_pairs
-		FROM dexs`
+	query := `SELECT factory_address, router_address, num_pairs FROM dexs`
 
 	rows, err := db.db.Query(query)
 	if err != nil {
-		fmt.Println("Failed to do 'GetAllDexs' query", err)
-		return nil
+		fmt.Println("Failed to do 'GetAllDexs' query")
+		panic(err)
 	}
 	defer rows.Close()
 
-	dexs := make([]*types.DexMemory, 0)
+	dexs := make([]*types.Dex, 0)
 	for rows.Next() {
 		var factory, router string
 		var numPairs int
 		if err := rows.Scan(&factory, &router, &numPairs); err != nil {
 			fmt.Println("Error in scanning rows in 'GetAlLDexs'.", err)
-			return nil
+			panic(err)
 		}
-		dexs = append(dexs, &types.DexMemory{
-			Factory:    common.HexToAddress(factory),
-			Router:     common.HexToAddress(router),
-			NumPairs:   numPairs,
-			SimplePair: map[common.Address]*types.SimplePair{},
-			Pairs:      map[string]*types.Pair{},
-			PairMutex:  map[string]*sync.Mutex{},
+		f := common.HexToAddress(factory)
+		r := common.HexToAddress(router)
+		dexs = append(dexs, &types.Dex{
+			Factory:  &f,
+			Router:   &r,
+			NumPairs: &numPairs,
+			// SimplePair: map[common.Address]*types.SimplePair{},
+			// Pairs:      map[string]*types.Pair{},
+			// PairMutex:  map[string]*sync.Mutex{},
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -67,36 +67,42 @@ func (db *Database) GetAllDexs() []*types.DexMemory {
 	return dexs
 }
 
-func (db *Database) GetPairsForDex(factoryAddress string) []*types.Pair {
+func (db *Database) GetPairs() []*types.Pair {
 	pairs := make([]*types.Pair, 0)
 
-	query := `SELECT p.pair_address, p.token0_address, p.token1_address, p.reserve0, p.reserve1, p.last_updated
+	query := `SELECT p.pair_address, p.token0_address, p.token1_address, p.reserve0, p.reserve1, p.last_updated, d.router_address
 		from dexs d 
 		join pairs p
-		on d.id = p.dex_id
-		where d.factory_address = $1`
+		on d.id = p.dex_id`
 
-	rows, err := db.db.Query(query, factoryAddress)
+	rows, err := db.db.Query(query)
 	if err != nil {
 		fmt.Println("Error in querying Pairs for Dex.", err)
 		return nil
 	}
 	for rows.Next() {
-		var pairAddress, token0Address, token1Address, reserve0, reserve1 string
+		var pairAddress, token0Address, token1Address, reserve0, reserve1, router string
 		var lastUpdated uint32
-		if err := rows.Scan(&pairAddress, &token0Address, &token1Address, &reserve0, &reserve1, &lastUpdated); err != nil {
+		if err := rows.Scan(&pairAddress, &token0Address, &token1Address, &reserve0, &reserve1, &lastUpdated, &router); err != nil {
 			fmt.Println("Error in scanning rows in 'GetPair'.", err)
 			return nil
 		}
+		pa := common.HexToAddress(pairAddress)
+		t0 := common.HexToAddress(token0Address)
+		t1 := common.HexToAddress(token1Address)
+		rA := common.HexToAddress(router)
 		r0, _ := new(big.Int).SetString(reserve0, 10)
 		r1, _ := new(big.Int).SetString(reserve1, 10)
+
+
 		pairs = append(pairs, &types.Pair{
-			PairAddress:   common.HexToAddress(pairAddress),
-			Token0Address: common.HexToAddress(token0Address),
-			Token1Address: common.HexToAddress(token1Address),
+			PairAddress:   &pa,
+			Token0Address: &t0,
+			Token1Address: &t1,
+			RouterAddress: &rA,
 			Reserve0:      r0,
 			Reserve1:      r1,
-			LastUpdated:   lastUpdated,
+			LastUpdated:   &lastUpdated,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -105,10 +111,6 @@ func (db *Database) GetPairsForDex(factoryAddress string) []*types.Pair {
 	}
 	return pairs
 
-}
-
-func (db *Database) GetPairsForFactory(factoryAddress string) []common.Address {
-	return nil
 }
 
 func (db *Database) InsertPair(pairAddress, token0Address, token1Address string, reserve0, reserve1 *big.Int, lastUpdated uint32) error {
@@ -123,14 +125,14 @@ func (db *Database) InsertPair(pairAddress, token0Address, token1Address string,
 	return nil
 }
 
-func (db *Database) UpdatePair(pairAddress string, reserve0 *big.Int, reserve1 *big.Int, lastUpdated uint32) {
+func (db *Database) UpdatePair(pairAddress string, reserve0 *big.Int, reserve1 *big.Int, lastUpdated *uint32) {
 
 	query := `
 				UPDATE pairs 
 				SET reserve0=$1, reserve1=$2, last_updated=$3
 				where pair_address=$4
 				`
-	_, err := db.db.Exec(query, reserve0.String(), reserve1.String(), lastUpdated, pairAddress)
+	_, err := db.db.Exec(query, reserve0.String(), reserve1.String(), *lastUpdated, pairAddress)
 	if err != nil {
 		fmt.Println("Error updating pair.", err)
 		return
@@ -138,7 +140,7 @@ func (db *Database) UpdatePair(pairAddress string, reserve0 *big.Int, reserve1 *
 
 }
 
-func (db *Database) InsertFullDex(dex *types.DexMemory) {
+func (db *Database) InsertFullDex(dex *types.Dex, pairs map[string]*types.Pair) {
 	tx, err := db.db.Begin()
 	if err != nil {
 		fmt.Println("Failed to being transaction ", err)
@@ -154,21 +156,23 @@ func (db *Database) InsertFullDex(dex *types.DexMemory) {
     `, dex.Factory.Hex(), dex.Router.Hex(), dex.NumPairs).Scan(&dexId)
 
 	// Insert or update the Pair records
-	for _, pair := range dex.Pairs {
-		_, err = tx.Exec(`
+	for _, pair := range pairs {
+		if pair.RouterAddress == dex.Router {
+			_, err = tx.Exec(`
 			INSERT INTO pairs (pair_address, token0_address, token1_address, reserve0, reserve1, last_updated, dex_id)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			pair.PairAddress.Hex(),
-			pair.Token0Address.Hex(),
-			pair.Token1Address.Hex(),
-			pair.Reserve0.String(),
-			pair.Reserve1.String(),
-			pair.LastUpdated,
-			dexId)
-		if err != nil {
-			fmt.Println("Error inserting into db.", err)
-			tx.Rollback()
-			return
+				pair.PairAddress.Hex(),
+				pair.Token0Address.Hex(),
+				pair.Token1Address.Hex(),
+				pair.Reserve0.String(),
+				pair.Reserve1.String(),
+				pair.LastUpdated,
+				dexId)
+			if err != nil {
+				fmt.Println("Error inserting into db.", err)
+				tx.Rollback()
+				return
+			}
 		}
 	}
 

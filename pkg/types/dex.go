@@ -1,23 +1,9 @@
 package types
 
-import (
-	"sync"
+import "github.com/ethereum/go-ethereum/common"
 
-	"github.com/ethereum/go-ethereum/common"
-)
-
-type DexMemory struct {
-	Factory  common.Address
-	Router   common.Address
-	NumPairs int
-
-	SimplePair map[common.Address]*SimplePair
-	Pairs      map[string]*Pair
-	PairMutex  map[string]*sync.Mutex
-}
-
-type PairMemory struct {
-	PairMap   map[common.Address]*SimplePair
-	Pairs     map[string]*Pair
-	PairMutex map[string]*sync.Mutex
+type Dex struct {
+	Factory  *common.Address
+	Router   *common.Address
+	NumPairs *int
 }

@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2factory"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
 	mem "github.com/RestinGreen/polygon-arbitrage/pkg/types"
 	"github.com/ethereum/go-ethereum"
@@ -17,11 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-type DexMonitor struct {
-	DexMemory Memory
-	txChan    chan *types.Transaction
-	binding   *binding.Binding
-	read      *bind.CallOpts
+type DataMonitor struct {
+	Memory  *Memory
+	txChan  chan *types.Transaction
+	binding *binding.Binding
+	read    *bind.CallOpts
 
 	//router is the key
 	monitorTracker map[common.Address]bool
@@ -32,13 +31,13 @@ type DexMonitor struct {
 	archiveNode *ethclient.Client
 }
 
-func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, archiveNode *ethclient.Client, db *database.Database) *DexMonitor {
+func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, archiveNode *ethclient.Client, db *database.Database) *DataMonitor {
 
-	return &DexMonitor{
-		txChan:    txChan,
-		DexMemory: *NewMemory(),
-		binding:   binding.NewBinding(fullNode),
-		read:      &bind.CallOpts{Pending: false},
+	return &DataMonitor{
+		txChan:  txChan,
+		Memory:  NewMemory(),
+		binding: binding.NewBinding(fullNode),
+		read:    &bind.CallOpts{Pending: false},
 
 		monitorTracker: map[common.Address]bool{},
 
@@ -49,11 +48,11 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 
 }
 
-func (m *DexMonitor) Start() {
+func (m *DataMonitor) Start() {
 
 	m.loadFromDB()
 
-	if len(m.DexMemory.DexMemory) > 0 {
+	if len(m.Memory.DexMemory.Dexs) > 0 {
 		go m.listenPairSyncEvents()
 		go m.refreshDexData()
 	}
@@ -80,7 +79,7 @@ func (m *DexMonitor) Start() {
 				fmt.Println("to address is nil")
 				continue
 			}
-			if _, exists := m.DexMemory.DexMemory[*routerAddress]; !exists {
+			if _, exists := m.Memory.DexMemory.Dexs[*routerAddress]; !exists {
 				go m.loadNewDexDataFromChain(routerAddress)
 			} else {
 				//TODO get only new pair addresses
@@ -98,12 +97,12 @@ func (m *DexMonitor) Start() {
 		}
 	}
 }
-func (m *DexMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
+func (m *DataMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 	ONE := new(big.Int).SetInt64(1)
 
 	routerContract, exists := m.binding.Routers[*routerAddress]
 	if !exists {
-		routerContract = m.binding.AddRouterContract(*routerAddress)
+		routerContract = m.binding.AddRouterContract(routerAddress)
 	}
 	factoryAddress, err := routerContract.Factory(m.read)
 	if err != nil {
@@ -113,7 +112,7 @@ func (m *DexMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 
 	factoryContract, exists := m.binding.Factories[factoryAddress]
 	if !exists {
-		factoryContract = m.binding.AddFactoryContract(factoryAddress)
+		factoryContract = m.binding.AddFactoryContract(&factoryAddress)
 	}
 
 	numPairsB, err := factoryContract.AllPairsLength(m.read)
@@ -124,7 +123,7 @@ func (m *DexMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 	numPairs := int(numPairsB.Uint64())
 
 	//add dex to memory
-	m.DexMemory.AddDex(*routerAddress, factoryAddress, numPairs)
+	m.Memory.AddDex(routerAddress, &factoryAddress, &numPairs)
 
 	fmt.Println("Loading ", numPairs, "pairs from factory", factoryAddress)
 
@@ -135,18 +134,18 @@ func (m *DexMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 		cntB.Add(cntB, ONE)
 		if err != nil {
 			fmt.Println("Failed to get pair with index", i, "from factory", factoryAddress)
+			continue
 		}
-		pairData := m.getPairData(pairAddress, factoryContract)
-		m.DexMemory.AddPairStruct(*routerAddress, pairData)
+		pairData := m.getPairData(&pairAddress)
+		m.Memory.AddPairStruct(pairData)
 
 	}
 	fmt.Println("Loading", numPairs, "pairs for factory", factoryAddress, "finished")
 	//save to db
-	m.db.InsertFullDex(m.DexMemory.DexMemory[*routerAddress])
-
+	m.db.InsertFullDex(m.Memory.DexMemory.Dexs[*routerAddress], m.Memory.PairMemory.Pairs)
 }
 
-func (m *DexMonitor) getPairData(pairAddress common.Address, factoryContract *univ2factory.UniV2Factory) *mem.Pair {
+func (m *DataMonitor) getPairData(pairAddress *common.Address) *mem.Pair {
 
 	pairContract := m.binding.AddPairContract(pairAddress)
 	reserves, err := pairContract.GetReserves(m.read)
@@ -163,53 +162,56 @@ func (m *DexMonitor) getPairData(pairAddress common.Address, factoryContract *un
 	}
 	return &mem.Pair{
 		PairAddress:   pairAddress,
-		Token0Address: token0,
-		Token1Address: token1,
+		Token0Address: &token0,
+		Token1Address: &token1,
 		Reserve0:      reserves.Reserve0,
 		Reserve1:      reserves.Reserve1,
-		LastUpdated:   reserves.BlockTimestampLast,
+		LastUpdated:   &reserves.BlockTimestampLast,
 	}
 
 }
 
-func (m *DexMonitor) loadFromDB() {
+func (m *DataMonitor) loadFromDB() {
 
 	fmt.Println("Loading database and creating bindings.")
 
 	var wg sync.WaitGroup
-	for _, dex := range m.db.GetAllDexs() {
-		m.DexMemory.AddDexStruct(dex)
-		go func(dex *mem.DexMemory) {
+	fmt.Println("Loading dexs.")
+	for _, dex := range m.db.GetAllData() {
+		m.Memory.AddDexStruct(dex)
+		go func(dex *mem.Dex) {
 			wg.Add(1)
 			defer wg.Done()
 			m.binding.AddFactoryContract(dex.Factory)
 		}(dex)
-		go func(dex *mem.DexMemory) {
+		go func(dex *mem.Dex) {
 			wg.Add(1)
 			defer wg.Done()
 			m.binding.AddRouterContract(dex.Router)
 		}(dex)
-		for _, pair := range m.db.GetPairsForDex(dex.Factory.Hex()) {
-			m.DexMemory.AddPairStruct(dex.Router, pair)
-			go func(pair *mem.Pair) {
-				wg.Add(1)
-				defer wg.Done()
-				m.binding.AddPairContract(pair.PairAddress)
-			}(pair)
-		}
 	}
+	fmt.Println("Loading dexs finished.")
+	fmt.Print("Loading pairs.")
+	for _, pair := range m.db.GetPairs() {
+		m.Memory.AddPairStruct(pair)
+		go func(pair *mem.Pair) {
+			wg.Add(1)
+			defer wg.Done()
+			m.binding.AddPairContract(pair.PairAddress)
+		}(pair)
+	}
+	fmt.Println("Loading pairs finished")
 	wg.Wait()
 	fmt.Println("Database loaded.")
 }
 
-func (m *DexMonitor) listenPairSyncEvents() {
+func (m *DataMonitor) listenPairSyncEvents() {
 
 	// m.eventWatchlist = make([]common.Address, 0)
 
-	for _, dex := range m.DexMemory.DexMemory {
-		for _, pair := range dex.Pairs {
-			m.eventWatchlist = append(m.eventWatchlist, pair.PairAddress)
-		}
+	for _, pair := range m.Memory.PairMemory.Pairs {
+		// key :=
+		m.eventWatchlist = append(m.eventWatchlist, *pair.PairAddress)
 	}
 
 	fmt.Println("There are", len(m.eventWatchlist), "pairs to watch.")
@@ -239,27 +241,25 @@ func (m *DexMonitor) listenPairSyncEvents() {
 
 }
 
-func (m *DexMonitor) refreshDexData() {
+func (m *DataMonitor) refreshDexData() {
 	fmt.Println("Refreshing started.")
-	for _, dex := range m.DexMemory.DexMemory {
-		for _, pair := range m.DexMemory.PairMemory[dex.Router].Pairs {
-			newPairData, err := m.binding.GetPairContract(pair.PairAddress).GetReserves(m.read)
-			if err != nil {
-				fmt.Println("Failed to get reservers in refreshing.", err)
-				continue
-			}
-			go func(pair *mem.Pair, dex *mem.DexMemory) {
-				if pair.LastUpdated < newPairData.BlockTimestampLast {
-					fmt.Println("Updating", pair.LastUpdated, " -> ", newPairData.BlockTimestampLast)
-					dex.PairMutex[getPairKey(pair)].Lock()
-					pair.Reserve0 = newPairData.Reserve0
-					pair.Reserve1 = newPairData.Reserve1
-					pair.LastUpdated = newPairData.BlockTimestampLast
-					dex.PairMutex[getPairKey(pair)].Unlock()
-					go m.db.UpdatePair(pair.PairAddress.Hex(), pair.Reserve0, pair.Reserve1, pair.LastUpdated)
-				}
-			}(pair, dex)
+	for _, pair := range m.Memory.PairMemory.Pairs {
+		newPairData, err := m.binding.GetPairContract(*pair.PairAddress).GetReserves(m.read)
+		if err != nil {
+			fmt.Println("Failed to get reservers in refreshing.", err)
+			continue
 		}
+		go func(pair *mem.Pair) {
+			if *pair.LastUpdated < newPairData.BlockTimestampLast {
+				fmt.Println("Updating", pair.LastUpdated, " -> ", newPairData.BlockTimestampLast)
+				m.Memory.PairMemory.PairMutex[getPairKey(pair)].Lock()
+				pair.Reserve0 = newPairData.Reserve0
+				pair.Reserve1 = newPairData.Reserve1
+				pair.LastUpdated = &newPairData.BlockTimestampLast
+				m.Memory.PairMemory.PairMutex[getPairKey(pair)].Unlock()
+				go m.db.UpdatePair(pair.PairAddress.Hex(), pair.Reserve0, pair.Reserve1, pair.LastUpdated)
+			}
+		}(pair)
 	}
 	fmt.Println("Refreshing finished.")
 }

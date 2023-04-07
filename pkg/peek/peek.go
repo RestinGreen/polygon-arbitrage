@@ -10,7 +10,7 @@ import (
 )
 
 type Peek struct {
-	dexMemory *memory.Memory
+	memory *memory.Memory
 }
 
 func NewPeek() *Peek {
@@ -18,9 +18,9 @@ func NewPeek() *Peek {
 	return &Peek{}
 }
 
-func (p *Peek) SetDexMemory(dexMemory *memory.Memory) {
+func (p *Peek) SetDexMemory(memory *memory.Memory) {
 
-	p.dexMemory = dexMemory
+	p.memory = memory
 }
 
 func (p *Peek) StartPeek() {
@@ -45,28 +45,28 @@ func (p *Peek) StartPeek() {
 			select {
 			case stdin, _ := <-ch:
 				switch stdin {
-				case "l":
-					fmt.Println("-----------------------------------------------------")
-					for router, v := range p.dexMemory.DexMemory {
-						fmt.Println(router)
-						fmt.Println("\t", v.Factory)
-						fmt.Println("\t pairs")
-						for _, pair := range v.Pairs {
-							fmt.Println("\t\t------------------------------------------")
-							fmt.Println("\t\t ", pair.PairAddress)
-							fmt.Println("\t\t ", pair.Token0Address)
-							fmt.Println("\t\t ", pair.Token1Address)
-							fmt.Println("\t\t ", pair.Reserve0)
-							fmt.Println("\t\t ", pair.Reserve1)
-							fmt.Println("\t\t ", pair.LastUpdated)
-							fmt.Println("\t\t------------------------------------------")
-						}
-					}
-					fmt.Println("-----------------------------------------------------")
+				// case "l":
+				// 	fmt.Println("-----------------------------------------------------")
+				// 	for router, v := range p.dexMemory.DexMemory {
+				// 		fmt.Println(router)
+				// 		fmt.Println("\t", v.Factory)
+				// 		fmt.Println("\t pairs")
+				// 		for _, pair := range v.Pairs {
+				// 			fmt.Println("\t\t------------------------------------------")
+				// 			fmt.Println("\t\t ", pair.PairAddress)
+				// 			fmt.Println("\t\t ", pair.Token0Address)
+				// 			fmt.Println("\t\t ", pair.Token1Address)
+				// 			fmt.Println("\t\t ", pair.Reserve0)
+				// 			fmt.Println("\t\t ", pair.Reserve1)
+				// 			fmt.Println("\t\t ", pair.LastUpdated)
+				// 			fmt.Println("\t\t------------------------------------------")
+				// 		}
+				// 	}
+				// 	fmt.Println("-----------------------------------------------------")
 				case "c":
-					fmt.Println("Factories: ", len(p.dexMemory.DexMemory))
-					for _, f := range p.dexMemory.DexMemory {
-						fmt.Println("Factory", f.Factory, "has", len(f.Pairs), "pairs.")
+					fmt.Println("Factories: ", len(p.memory.DexMemory.Dexs))
+					for _, f := range p.memory.DexMemory.Dexs {
+						fmt.Println("Factory", f.Factory, "has", *f.NumPairs, "pairs.")
 					}
 				case "q":
 					exec.Command("stty", "-F", "/dev/tty", "echo").Run()
