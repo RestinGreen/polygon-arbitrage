@@ -8,7 +8,9 @@ import (
 )
 
 type PairMemory struct {
-	PairMap   map[common.Address]*types.SimplePair
+	PairMap   map[common.Address]*string
+	
+	//key is t0 + t1 + router
 	Pairs     map[string]*types.Pair
 	PairMutex map[string]*sync.Mutex
 }

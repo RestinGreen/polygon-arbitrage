@@ -45,24 +45,8 @@ func (p *Peek) StartPeek() {
 			select {
 			case stdin, _ := <-ch:
 				switch stdin {
-				// case "l":
-				// 	fmt.Println("-----------------------------------------------------")
-				// 	for router, v := range p.dexMemory.DexMemory {
-				// 		fmt.Println(router)
-				// 		fmt.Println("\t", v.Factory)
-				// 		fmt.Println("\t pairs")
-				// 		for _, pair := range v.Pairs {
-				// 			fmt.Println("\t\t------------------------------------------")
-				// 			fmt.Println("\t\t ", pair.PairAddress)
-				// 			fmt.Println("\t\t ", pair.Token0Address)
-				// 			fmt.Println("\t\t ", pair.Token1Address)
-				// 			fmt.Println("\t\t ", pair.Reserve0)
-				// 			fmt.Println("\t\t ", pair.Reserve1)
-				// 			fmt.Println("\t\t ", pair.LastUpdated)
-				// 			fmt.Println("\t\t------------------------------------------")
-				// 		}
-				// 	}
-				// 	fmt.Println("-----------------------------------------------------")
+				case "l":
+					fmt.Println("There are", len(p.memory.PairMemory.Pairs), "loaded in memory.")
 				case "c":
 					fmt.Println("Factories: ", len(p.memory.DexMemory.Dexs))
 					for _, f := range p.memory.DexMemory.Dexs {

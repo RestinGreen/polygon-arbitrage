@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	_ "github.com/lib/pq"
@@ -94,7 +95,6 @@ func (db *Database) GetPairs() []*types.Pair {
 		r0, _ := new(big.Int).SetString(reserve0, 10)
 		r1, _ := new(big.Int).SetString(reserve1, 10)
 
-
 		pairs = append(pairs, &types.Pair{
 			PairAddress:   &pa,
 			Token0Address: &t0,
@@ -140,27 +140,36 @@ func (db *Database) UpdatePair(pairAddress string, reserve0 *big.Int, reserve1 *
 
 }
 
-func (db *Database) InsertFullDex(dex *types.Dex, pairs map[string]*types.Pair) {
+func (db *Database) InsertFullDex(dex *types.Dex, pairs map[string]*types.Pair, creationMutex *sync.Mutex) {
 	tx, err := db.db.Begin()
 	if err != nil {
 		fmt.Println("Failed to being transaction ", err)
 		tx.Rollback()
 		return
 	}
-	// Insert or update the Dex record
+	// Insert Dex records
 	var dexId int
 	tx.QueryRow(`
         INSERT INTO dexs (factory_address, router_address, num_pairs)
         VALUES ($1, $2, $3)
 		RETURNING id
-    `, dex.Factory.Hex(), dex.Router.Hex(), dex.NumPairs).Scan(&dexId)
+    `, dex.Factory.Hex(), dex.Router.Hex(), *dex.NumPairs).Scan(&dexId)
 
-	// Insert or update the Pair records
+	// Insert Pair records
+	creationMutex.Lock()
+	defer creationMutex.Unlock()
 	for _, pair := range pairs {
 		if pair.RouterAddress == dex.Router {
 			_, err = tx.Exec(`
-			INSERT INTO pairs (pair_address, token0_address, token1_address, reserve0, reserve1, last_updated, dex_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+						INSERT INTO pairs (
+							pair_address,
+							token0_address,
+							token1_address,
+							reserve0,
+							reserve1,
+							last_updated,
+							dex_id)
+						VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 				pair.PairAddress.Hex(),
 				pair.Token0Address.Hex(),
 				pair.Token1Address.Hex(),
@@ -173,6 +182,7 @@ func (db *Database) InsertFullDex(dex *types.Dex, pairs map[string]*types.Pair) 
 				tx.Rollback()
 				return
 			}
+
 		}
 	}
 
