@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
@@ -23,7 +24,7 @@ type DataMonitor struct {
 	read    *bind.CallOpts
 
 	//router is the key
-	startSync *sync.Mutex
+	startSync      *sync.Mutex
 	monitorTracker map[common.Address]bool
 	eventWatchlist []common.Address
 
@@ -40,13 +41,12 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 		binding: binding.NewBinding(fullNode),
 		read:    &bind.CallOpts{Pending: false},
 
-		startSync: &sync.Mutex{},
+		startSync:      &sync.Mutex{},
 		monitorTracker: map[common.Address]bool{},
 
 		db:          db,
 		fullNode:    fullNode,
 		archiveNode: archiveNode,
-
 	}
 
 }
@@ -58,6 +58,8 @@ func (m *DataMonitor) Start() {
 	if len(m.Memory.DexMemory.Dexs) > 0 {
 		go m.listenPairSyncEvents()
 		go m.refreshDexData()
+
+		m.getAllRoutes()
 	}
 
 	fmt.Println("Mempool monitoring started.")
@@ -91,14 +93,6 @@ func (m *DataMonitor) Start() {
 			}
 			m.monitorTracker[*routerAddress] = false
 
-			//decoding pairs from tx data and adding to memory
-			// switch hex.EncodeToString(txInputData[0:4]) {
-			// case "fb3bdb41", "7ff36ab5", "b6f9de95":
-			// 	m.decodeInputData(*routerAddress, factoryContract, txInputData, 4)
-
-			// case "18cbafe5", "791ac947", "38ed1739", "5c11d795", "4a25d94a", "8803dbee":
-			// 	m.decodeInputData(*routerAddress, factoryContract, txInputData, 5)
-			// }
 		}
 	}
 }
@@ -126,7 +120,6 @@ func (m *DataMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 		return
 	}
 	numPairs := int(numPairsB.Uint64())
-
 	//add dex to memory
 	m.Memory.AddDex(routerAddress, &factoryAddress, &numPairs)
 
@@ -141,7 +134,10 @@ func (m *DataMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 			fmt.Println("Failed to get pair with index", i, "from factory", factoryAddress)
 			continue
 		}
-		pairData := m.getPairData(&pairAddress)
+		pairData, ok := m.getPairData(&pairAddress)
+		if !ok {
+			continue
+		}
 		pairData.RouterAddress = routerAddress
 		m.Memory.AddPairStruct(pairData)
 
@@ -151,12 +147,15 @@ func (m *DataMonitor) loadNewDexDataFromChain(routerAddress *common.Address) {
 	m.db.InsertFullDex(m.Memory.DexMemory.Dexs[*routerAddress], m.Memory.PairMemory.Pairs, m.Memory.CreationMutex)
 }
 
-func (m *DataMonitor) getPairData(pairAddress *common.Address) *mem.Pair {
+func (m *DataMonitor) getPairData(pairAddress *common.Address) (*mem.Pair, bool) {
 
 	pairContract := m.binding.AddPairContract(pairAddress)
 	reserves, err := pairContract.GetReserves(m.read)
 	if err != nil {
 		fmt.Println("Failed to get reserves.")
+	}
+	if reserves.Reserve0.Uint64() == 0 || reserves.Reserve1.Uint64() == 0 {
+		return nil, false
 	}
 	token0, err := pairContract.Token0(m.read)
 	if err != nil {
@@ -173,7 +172,7 @@ func (m *DataMonitor) getPairData(pairAddress *common.Address) *mem.Pair {
 		Reserve0:      reserves.Reserve0,
 		Reserve1:      reserves.Reserve1,
 		LastUpdated:   &reserves.BlockTimestampLast,
-	}
+	}, true
 
 }
 
@@ -213,12 +212,11 @@ func (m *DataMonitor) loadFromDB() {
 
 func (m *DataMonitor) listenPairSyncEvents() {
 
-	// m.eventWatchlist = make([]common.Address, 0)
-
+	m.Memory.CreationMutex.Lock()
 	for _, pair := range m.Memory.PairMemory.Pairs {
-		// key :=
 		m.eventWatchlist = append(m.eventWatchlist, *pair.PairAddress)
 	}
+	m.Memory.CreationMutex.Unlock()
 
 	fmt.Println("There are", len(m.eventWatchlist), "pairs to watch.")
 	query := ethereum.FilterQuery{
@@ -239,16 +237,21 @@ func (m *DataMonitor) listenPairSyncEvents() {
 		case err := <-subscribtion.Err():
 			panic(err)
 		case log := <-logsCh:
+			b, err := m.fullNode.BlockByHash(context.Background(), log.BlockHash)
+			if err != nil {
+				fmt.Println("Failed to get block by hash")
+			}
 			r0 := new(big.Int).SetBytes(log.Data[0:32])
 			r1 := new(big.Int).SetBytes(log.Data[32:64])
-			bn := uint32(log.BlockNumber)
+			timestamp := uint32(b.Time())
 
 			key := m.Memory.PairMemory.PairMap[log.Address]
 			m.Memory.PairMemory.PairMutex[*key].Lock()
 			m.Memory.PairMemory.Pairs[*key].Reserve0 = r0
 			m.Memory.PairMemory.Pairs[*key].Reserve1 = r1
-			m.Memory.PairMemory.Pairs[*key].LastUpdated = &bn
+			m.Memory.PairMemory.Pairs[*key].LastUpdated = &timestamp
 			m.Memory.PairMemory.PairMutex[*key].Unlock()
+			go m.db.UpdatePair(log.Address.Hex(), r0, r1, &timestamp)
 			fmt.Println("Pair", log.Address, "updated in block", log.BlockNumber)
 		}
 	}
@@ -265,7 +268,7 @@ func (m *DataMonitor) refreshDexData() {
 		}
 		go func(pair *mem.Pair) {
 			if *pair.LastUpdated < newPairData.BlockTimestampLast {
-				fmt.Println("Updating", *pair.LastUpdated, " -> ", newPairData.BlockTimestampLast)
+				fmt.Println("Updating", *pair.LastUpdated, " -> ", newPairData.BlockTimestampLast, "pair", *pair.PairAddress)
 				m.Memory.PairMemory.PairMutex[getPairKey(pair)].Lock()
 				pair.Reserve0 = newPairData.Reserve0
 				pair.Reserve1 = newPairData.Reserve1
@@ -286,46 +289,89 @@ func (m *Memory) dbSaverJob() {
 
 }
 
-// func (m *DexMonitor) decodeInputData(router common.Address, factoryContract *univ2factory.UniV2Factory, data []byte, pathLengthIndex int) {
+func (m *DataMonitor) getAllRoutes() {
+	fmt.Println("Getting routes")
 
-// 	length := int(new(big.Int).SetBytes(getithParam(data, pathLengthIndex)).Int64())
-// 	for i := 0; i < length-1; i++ {
-// 		tokenAByte := getithParam(data, pathLengthIndex+1+i)
-// 		tokenBByte := getithParam(data, pathLengthIndex+1+i+1)
+	m.Memory.Routes = make(map[common.Address]map[common.Address][]*mem.Route)
+	i := 0
+	m.Memory.hop0Mu = &sync.Mutex{}
+	wg := &sync.WaitGroup{}
 
-// 		addressA := common.BytesToAddress(tokenAByte)
-// 		addressB := common.BytesToAddress(tokenBByte)
+	tokens := map[common.Address]bool{}
+	for _, x := range m.Memory.PairMemory.Pairs {
+		tokens[*x.Token0Address] = true
+		tokens[*x.Token1Address] = true
+	}
 
-// 		token0, token1 := chain.SortAddress(addressA, addressB)
+	fmt.Println("nr of tokens ", len(tokens))
 
-// 		pairAddress, err := factoryContract.GetPair(m.read, token0, token1)
-// 		m.binding.AddPair(pairAddress)
-// 		if err != nil {
-// 			fmt.Println("Failed to get pairAddress")
-// 			continue
-// 		}
-// 		reserves, err := m.binding.Pairs[pairAddress].GetReserves(m.read)
-// 		if err != nil {
-// 			fmt.Println("Failed to get reserves.")
-// 			continue
-// 		}
+	a := 1
+	for t1 := range tokens {
+		fmt.Println(a)
+		a++
+		for t2 := range tokens {
+			if _, exists := m.Memory.Routes[t1]; !exists {
+				m.Memory.Routes[t1] = make(map[common.Address][]*mem.Route)
+			}
+			if _, exists := m.Memory.Routes[t1][t2]; !exists {
+				m.Memory.Routes[t1][t2] = make([]*mem.Route, 0)
+			}
+		}
+	}
 
-// 		m.DexMemory.AddPair(router, pairAddress, token0, token1, reserves.Reserve0, reserves.Reserve1, reserves.BlockTimestampLast)
+	for _, pair := range m.Memory.PairMemory.Pairs {
+		go func(a *common.Address) {
+			wg.Add(1)
+			defer wg.Done()
+			m.find0HopRoutes(a)
+		}(pair.Token0Address)
+		i++
+		if i == 1000 {
+			break
+		}
+	}
+	wg.Wait()
+	fmt.Println("0 hop routes finished,")
 
-// 	}
-// }
+}
 
-// Param order in bytecode:
-// 0
-// func getithParam(bytes []byte, i int) []byte {
+func (m *DataMonitor) find0HopRoutes(start *common.Address) {
 
-// 	firstIndex := 4 + i*32
-// 	lastIndex := 4 + (i+1)*32
-// 	return bytes[firstIndex:lastIndex]
-// }
+	sum := 0
+	for _, pair := range m.Memory.PairMemory.Pairs {
+		sstart := time.Now()
+		route := &mem.Route{
+			Path: []*mem.Node{},
+		}
+		if *start == *pair.Token0Address {
+			node := &mem.Node{
+				Pair:      pair,
+				IsInverse: false,
+			}
+			route.Path = append(route.Path, node)
+			// routes = append(routes, route)
+		} else if *start == *pair.Token1Address {
+			node := &mem.Node{
+				Pair:      pair,
+				IsInverse: true,
+			}
+			route.Path = append(route.Path, node)
+			// routes = append(routes, route)
+		} else {
+			continue
+		}
+		m.Memory.hop0Mu.Lock()
+		if _, exists := m.Memory.Routes[*start]; !exists {
+			m.Memory.Routes[*start] = make(map[common.Address][]*mem.Route)
+		}
 
-// func getithTopicData(bytes []byte, i int) []byte {
-// 	firstIndex := i * 32
-// 	lastIndex := (i + 1) * 32
-// 	return bytes[firstIndex:lastIndex]
-// }
+		if _, exists := m.Memory.Routes[*start][*pair.Token0Address]; !exists {
+			m.Memory.Routes[*start][*pair.Token0Address] = make([]*mem.Route, 0)
+		}
+		m.Memory.Routes[*start][*pair.Token0Address] = append(m.Memory.Routes[*start][*pair.Token0Address], route)
+		m.Memory.hop0Mu.Unlock()
+		since := int(time.Since(sstart))
+		sum += since
+	}
+	fmt.Println("avg ", sum/len(m.Memory.PairMemory.Pairs))
+}

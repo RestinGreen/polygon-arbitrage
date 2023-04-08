@@ -13,5 +13,5 @@ type Pair struct {
 	RouterAddress *common.Address
 	Reserve0      *big.Int
 	Reserve1      *big.Int
-	LastUpdated   *uint32
+	LastUpdated *uint32
 }

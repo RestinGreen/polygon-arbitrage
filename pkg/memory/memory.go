@@ -13,6 +13,10 @@ type Memory struct {
 	DexMemory  *DexMemory
 	PairMemory *PairMemory
 
+	// from -> to = pair route list
+	Routes map[common.Address]map[common.Address][]*types.Route
+	hop0Mu *sync.Mutex
+
 	CreationMutex *sync.Mutex
 }
 

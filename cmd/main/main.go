@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/RestinGreen/polygon-arbitrage/pkg/arbitrage"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/connection"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/general"
@@ -37,7 +38,7 @@ func main() {
 
 	newFullTx := make(chan *types.Transaction)
 	dexMonitorCh := make(chan *types.Transaction)
-	// arbitrageCh := make(chan *types.Transaction)
+	arbitrageCh := make(chan *types.Transaction)
 
 	_, err := subscriber.SubscribePendingFullTransactions(context.Background(), newFullTx)
 	if err != nil {
@@ -48,9 +49,10 @@ func main() {
 	fullNode.EthClient.SubscribeNewHead(context.Background(), newBlocks)
 
 	monitor := memory.NewDexMonirot(dexMonitorCh, fullNode.EthClient, archiveNode.EthClient, db)
+	arbitrage := arbitrage.NewArbitrage(arbitrageCh, monitor.Memory)
+	go arbitrage.StartArbitrage()
 	go monitor.Start()
-	peek := peek.NewPeek()
-	peek.SetDexMemory(monitor.Memory)
+	peek := peek.NewPeek(monitor.Memory, db)
 	peek.StartPeek()
 
 	for tx := range newFullTx {
@@ -63,6 +65,7 @@ func main() {
 			continue
 		}
 		dexMonitorCh <- tx
+		arbitrageCh <- tx
 		// fmt.Println(tx.To(), method, tx.Hash().Hex())
 	}
 
