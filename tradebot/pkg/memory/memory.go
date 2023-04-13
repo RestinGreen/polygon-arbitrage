@@ -12,6 +12,9 @@ type Memory struct {
 	//key is router
 	DexMemory  *DexMemory
 	PairMemory *PairMemory
+	TokenMemory *TokenMemory
+	
+	
 
 	// from -> to = pair route list
 	Routes map[common.Address]map[common.Address][]*types.Route

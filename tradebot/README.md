@@ -2,6 +2,7 @@
 
 1. Have a polygon node ipc
 2. 
+    Default postres user login: sudo -u postgres psql
     - Create pgsql user "bot" with a password.
     - CREATE USER bot WITH ENCRYPTED PASSWORD '';
     - Create database: CREATE DATABASE arbitrage
@@ -36,3 +37,8 @@ CREATE TABLE pairs (
     FOREIGN KEY (dex_id) REFERENCES dexs(id)
 );
 
+CREATE TABLE tokens ( 
+    id SERIAL PRIMARY KEY, 
+    address VARCHAR(255) NOT NULL UNIQUE, symbol VARCHAR(255), 
+    name VARCHAR(255)
+);

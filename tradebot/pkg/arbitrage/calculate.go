@@ -62,10 +62,9 @@ func (a *Arbitrage) decodeAndCalculate(data []byte, router *common.Address, path
 		_, _, inverse := chain.SortAddress(fromToken, toToken)
 
 		if !inverse {
-			
+
 			// sourceKey := fromToken.Hex()+toToken.Hex()+router.Hex()
 			// source := a.Memory.PairMemory.Pairs[sourceKey]
-
 
 		}
 

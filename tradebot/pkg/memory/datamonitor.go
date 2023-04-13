@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"runtime"
 	"sync"
 	"time"
 
@@ -23,10 +24,13 @@ type DataMonitor struct {
 	binding *binding.Binding
 	read    *bind.CallOpts
 
+	startSync           *sync.Mutex
+	initRoutesOrLoadDex *sync.Mutex
+
 	//router is the key
-	startSync      *sync.Mutex
 	monitorTracker map[common.Address]bool
 	eventWatchlist []common.Address
+	dbLoadFinished bool
 
 	db          *database.Database
 	fullNode    *ethclient.Client
@@ -41,8 +45,12 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 		binding: binding.NewBinding(fullNode),
 		read:    &bind.CallOpts{Pending: false},
 
-		startSync:      &sync.Mutex{},
+		startSync:           &sync.Mutex{},
+		initRoutesOrLoadDex: &sync.Mutex{},
+
 		monitorTracker: map[common.Address]bool{},
+		eventWatchlist: []common.Address{},
+		dbLoadFinished: false,
 
 		db:          db,
 		fullNode:    fullNode,
@@ -54,12 +62,16 @@ func NewDexMonirot(txChan chan *types.Transaction, fullNode *ethclient.Client, a
 func (m *DataMonitor) Start() {
 
 	m.loadFromDB()
+	m.dbLoadFinished = true
 
 	if len(m.Memory.DexMemory.Dexs) > 0 {
 		go m.listenPairSyncEvents()
 		go m.refreshDexData()
 
+		m.initRoutesOrLoadDex.Lock()
 		m.getAllRoutes()
+		m.initRoutesOrLoadDex.Unlock()
+
 	}
 
 	fmt.Println("Mempool monitoring started.")
@@ -67,6 +79,9 @@ func (m *DataMonitor) Start() {
 		select {
 
 		case tx := <-m.txChan:
+			if !m.dbLoadFinished {
+				return
+			}
 			routerAddress := tx.To()
 
 			m.startSync.Lock()
@@ -87,7 +102,9 @@ func (m *DataMonitor) Start() {
 				continue
 			}
 			if _, exists := m.Memory.DexMemory.Dexs[*routerAddress]; !exists {
+				m.initRoutesOrLoadDex.Lock()
 				go m.loadNewDexDataFromChain(routerAddress)
+				m.initRoutesOrLoadDex.Unlock()
 			} else {
 				//TODO get only new pair addresses
 			}
@@ -154,7 +171,7 @@ func (m *DataMonitor) getPairData(pairAddress *common.Address) (*mem.Pair, bool)
 	if err != nil {
 		fmt.Println("Failed to get reserves.")
 	}
-	if reserves.Reserve0.Uint64() == 0 || reserves.Reserve1.Uint64() == 0 {
+	if reserves.Reserve0.Uint64() == 0 || reserves.Reserve1.Uint64() == 0 || reserves.BlockTimestampLast < 1_649_665_667 {
 		return nil, false
 	}
 	token0, err := pairContract.Token0(m.read)
@@ -268,7 +285,7 @@ func (m *DataMonitor) refreshDexData() {
 		}
 		go func(pair *mem.Pair) {
 			if *pair.LastUpdated < newPairData.BlockTimestampLast {
-				fmt.Println("Updating", *pair.LastUpdated, " -> ", newPairData.BlockTimestampLast, "pair", *pair.PairAddress)
+				fmt.Println("Refreshing pair", *pair.PairAddress)
 				m.Memory.PairMemory.PairMutex[getPairKey(pair)].Lock()
 				pair.Reserve0 = newPairData.Reserve0
 				pair.Reserve1 = newPairData.Reserve1
@@ -290,88 +307,105 @@ func (m *Memory) dbSaverJob() {
 }
 
 func (m *DataMonitor) getAllRoutes() {
-	fmt.Println("Getting routes")
-
-	m.Memory.Routes = make(map[common.Address]map[common.Address][]*mem.Route)
-	i := 0
-	m.Memory.hop0Mu = &sync.Mutex{}
-	wg := &sync.WaitGroup{}
+	fmt.Println("Precomputing routes.")
 
 	tokens := map[common.Address]bool{}
 	for _, x := range m.Memory.PairMemory.Pairs {
 		tokens[*x.Token0Address] = true
 		tokens[*x.Token1Address] = true
 	}
-
-	fmt.Println("nr of tokens ", len(tokens))
-
-	a := 1
-	for t1 := range tokens {
-		fmt.Println(a)
-		a++
-		for t2 := range tokens {
-			if _, exists := m.Memory.Routes[t1]; !exists {
-				m.Memory.Routes[t1] = make(map[common.Address][]*mem.Route)
-			}
-			if _, exists := m.Memory.Routes[t1][t2]; !exists {
-				m.Memory.Routes[t1][t2] = make([]*mem.Route, 0)
-			}
-		}
-	}
-
-	for _, pair := range m.Memory.PairMemory.Pairs {
-		go func(a *common.Address) {
-			wg.Add(1)
-			defer wg.Done()
-			m.find0HopRoutes(a)
-		}(pair.Token0Address)
-		i++
-		if i == 1000 {
-			break
-		}
-	}
-	wg.Wait()
-	fmt.Println("0 hop routes finished,")
+	m.initRoutesMap(tokens)
+	m.do0HopRoutes(tokens)
 
 }
 
-func (m *DataMonitor) find0HopRoutes(start *common.Address) {
+func (m *DataMonitor) initRoutesMap(tokens map[common.Address]bool) {
+	m.Memory.Routes = make(map[common.Address]map[common.Address][]*mem.Route)
+	m.Memory.hop0Mu = &sync.Mutex{}
 
-	sum := 0
+	fmt.Println("There are", len(tokens), "unique tokens.")
+	start := time.Now()
+	tokenChan := make(chan common.Address)
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for from := range tokenChan {
+				for to := range tokens {
+					if from != to {
+						m.Memory.Routes[from][to] = make([]*mem.Route, 0)
+					}
+				}
+			}
+		}()
+	}
+
+	for from := range tokens {
+		m.Memory.Routes[from] = make(map[common.Address][]*mem.Route)
+	}
+
+	for from := range tokens {
+		tokenChan <- from
+	}
+	fmt.Println("Closing channels.")
+	close(tokenChan)
+	fmt.Println("waiting")
+	wg.Wait()
+	fmt.Println("time ", time.Since(start))
+}
+
+
+func (m *DataMonitor) do0HopRoutes(tokens map[common.Address]bool) {
+
+	fromCh := make(chan common.Address)
+	wg := &sync.WaitGroup{}
+	start := time.Now()
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for from := range fromCh {
+				m.find0HopRoutes(&from)
+			}
+
+		}()
+	}
+
+	for from := range tokens {
+		fromCh <- from
+	}
+	close(fromCh)
+	wg.Wait()
+	fmt.Println("0 hop routes finished in", time.Since(start))
+}
+
+func (m *DataMonitor) find0HopRoutes(from *common.Address) {
+
 	for _, pair := range m.Memory.PairMemory.Pairs {
-		sstart := time.Now()
 		route := &mem.Route{
 			Path: []*mem.Node{},
 		}
-		if *start == *pair.Token0Address {
+		if *from == *pair.Token0Address {
 			node := &mem.Node{
 				Pair:      pair,
 				IsInverse: false,
 			}
 			route.Path = append(route.Path, node)
-			// routes = append(routes, route)
-		} else if *start == *pair.Token1Address {
+			m.Memory.Routes[*from][*pair.Token1Address] = append(m.Memory.Routes[*from][*pair.Token1Address], route)
+
+		} else if *from == *pair.Token1Address {
 			node := &mem.Node{
 				Pair:      pair,
 				IsInverse: true,
 			}
 			route.Path = append(route.Path, node)
-			// routes = append(routes, route)
+			m.Memory.Routes[*from][*pair.Token0Address] = append(m.Memory.Routes[*from][*pair.Token0Address], route)
 		} else {
 			continue
 		}
-		m.Memory.hop0Mu.Lock()
-		if _, exists := m.Memory.Routes[*start]; !exists {
-			m.Memory.Routes[*start] = make(map[common.Address][]*mem.Route)
-		}
-
-		if _, exists := m.Memory.Routes[*start][*pair.Token0Address]; !exists {
-			m.Memory.Routes[*start][*pair.Token0Address] = make([]*mem.Route, 0)
-		}
-		m.Memory.Routes[*start][*pair.Token0Address] = append(m.Memory.Routes[*start][*pair.Token0Address], route)
-		m.Memory.hop0Mu.Unlock()
-		since := int(time.Since(sstart))
-		sum += since
 	}
-	fmt.Println("avg ", sum/len(m.Memory.PairMemory.Pairs))
 }
+

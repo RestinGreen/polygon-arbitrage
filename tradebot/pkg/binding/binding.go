@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/erc20"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2factory"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2pair"
 	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2router"
@@ -14,19 +15,27 @@ import (
 type Binding struct {
 	ethClient *ethclient.Client
 
-	pairsMutex     sync.Mutex
-	routersMutex   sync.Mutex
-	factoriesMutex sync.Mutex
+	pairsMutex     *sync.Mutex
+	routersMutex   *sync.Mutex
+	factoriesMutex *sync.Mutex
+	tokensMutex    *sync.Mutex
 
 	pairs     map[common.Address]*univ2pair.UniV2Pair
 	Routers   map[common.Address]*univ2router.UniV2Router
 	Factories map[common.Address]*univ2factory.UniV2Factory
+	Tokens    map[common.Address]*erc20.ERC20
 }
 
 func NewBinding(ethClient *ethclient.Client) *Binding {
 
 	return &Binding{
 		ethClient: ethClient,
+
+		pairsMutex:     &sync.Mutex{},
+		routersMutex:   &sync.Mutex{},
+		factoriesMutex: &sync.Mutex{},
+		tokensMutex:    &sync.Mutex{},
+
 		pairs:     map[common.Address]*univ2pair.UniV2Pair{},
 		Routers:   map[common.Address]*univ2router.UniV2Router{},
 		Factories: map[common.Address]*univ2factory.UniV2Factory{},
@@ -74,4 +83,19 @@ func (b *Binding) AddFactoryContract(factoryAddress *common.Address) *univ2facto
 	b.factoriesMutex.Unlock()
 
 	return newFactoryContract
+}
+
+func (b *Binding) AddTokenContract(tokenAddress *common.Address) *erc20.ERC20 {
+	if _, exists := b.Tokens[*tokenAddress]; exists {
+		return b.Tokens[*tokenAddress]
+	}
+	newTokenContract, err := erc20.NewERC20(*tokenAddress, b.ethClient)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Failed to add %s router binding.", tokenAddress.Hex()))
+	}
+	b.tokensMutex.Lock()
+	b.Tokens[*tokenAddress] = newTokenContract
+	b.tokensMutex.Unlock()
+
+	return newTokenContract
 }

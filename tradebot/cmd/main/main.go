@@ -40,6 +40,9 @@ func main() {
 	dexMonitorCh := make(chan *types.Transaction)
 	arbitrageCh := make(chan *types.Transaction)
 
+	defer close(dexMonitorCh)
+	defer close(arbitrageCh)
+
 	_, err := subscriber.SubscribePendingFullTransactions(context.Background(), newFullTx)
 	if err != nil {
 		fmt.Println(err)
