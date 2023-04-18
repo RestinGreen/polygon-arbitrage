@@ -5,7 +5,19 @@
 		},
 		{
 			"path": "./database"
-		}
+		},
+		{
+			"path": "./db-service"
+		},
+		{
+			"path": "./rabbitmq"
+		},
+		{
+			"path": "./dex-scrapper"
+		},
+		{
+			"path": "."
+		},
 	],
 	"settings": {}
 }

@@ -1,0 +1,33 @@
+version: '3'
+services:
+
+  database:
+    image: database
+    container_name: database
+    build: 
+      context: ./database
+      dockerfile: Dockerfile
+    networks:
+      - database-network
+    ports:
+      - 5432:5432
+    env_file:
+      - ./database/.env
+
+
+  db-service:
+    image: db-service
+    container_name: db-service
+    build: 
+      context: ./db-service
+      dockerfile: Dockerfile
+    networks:
+      - database-network
+    env_file:
+      - ./db-service/.env
+    depends_on:
+      - database
+networks:
+  database-network:
+    name: database-network
+    driver: bridge
