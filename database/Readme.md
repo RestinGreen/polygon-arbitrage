@@ -1,20 +1,10 @@
-# Useful docker commands cheat sheet
+# Docker commands for this service
 
-1. List all docker container
-    - docker ps -a
-2. List all docker images
-    - docker images -a
-3. List all volumes
-    - docker volume ls
-4. Remove all images and containers
-    - docker system prune -a
-5. Remove all volumes
-    - docker volume prune
-6. Build
-    - docker build -t tag:version .
-7. Run
-    - docker run --name name -e ENV_VARIALBE=env_value --env-file .env image_to_run
-8. Build and run
-    - docker build -t db . && docker run --name db --env-file .env db
-9. Delete all volumes + containers + images
-    - docker rm db && docker rmi db && docker volume prune -f
+1. Build
+    - docker build -t database .
+2. Run
+    - docker run --name database --env-file .env --network database-network -p5432:5432 database
+3. Remove old docker image and container
+    - docker rm database && docker rmi database
+4. Clear old + build and run
+    - docker rm database && docker rmi database && docker build -t database . && docker run --name database --env-file .env --network host -p 5432:5432 database
