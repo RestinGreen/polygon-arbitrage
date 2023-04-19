@@ -1,4 +1,4 @@
-module github.com/RestinGreen/polygon-arbitrage
+module github.com/RestinGreen/polygon-arbitrage/tradebot
 
 go 1.20
 

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/erc20"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2factory"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2pair"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding/univ2router"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/binding/erc20"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/binding/univ2factory"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/binding/univ2pair"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/binding/univ2router"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )

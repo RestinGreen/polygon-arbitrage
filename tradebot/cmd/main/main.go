@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/arbitrage"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/connection"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/general"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/memory"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/peek"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/arbitrage"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/connection"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/database"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/general"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/memory"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/peek"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 )

@@ -10,8 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	_ "github.com/lib/pq"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/general"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/types"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/general"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/types"
 )
 
 type Database struct {

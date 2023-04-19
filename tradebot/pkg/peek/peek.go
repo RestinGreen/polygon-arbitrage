@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/memory"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/database"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/memory"
 )
 
 type Peek struct {

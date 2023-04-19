@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"math/big"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/chain"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/memory"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/chain"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/memory"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )

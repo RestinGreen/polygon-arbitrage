@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/binding"
-	"github.com/RestinGreen/polygon-arbitrage/pkg/database"
-	mem "github.com/RestinGreen/polygon-arbitrage/pkg/types"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/binding"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/database"
+	mem "github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/RestinGreen/polygon-arbitrage/pkg/types"
+	"github.com/RestinGreen/polygon-arbitrage/tradebot/pkg/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
