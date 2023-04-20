@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option go_package = "github.com/RestinGreen/polygon-arbitrage/protobuf/generated";
+
+
+package protobuf;
+
+service Database {
+  rpc GetAllDex(GetAllDexRequest) returns (GetAllDexResponse) {}
+}
+
+message Dex {
+    string factoryAddress = 1;
+    string routerAddress = 2;
+    int64 numPairs = 3;
+}
+
+message GetAllDexRequest {
+}
+
+message GetAllDexResponse {
+  repeated Dex dexs = 1;
+}
