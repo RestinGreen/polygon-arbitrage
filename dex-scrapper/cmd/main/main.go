@@ -6,7 +6,9 @@ import (
 	"os"
 
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain"
+	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/bot"
 	dbclient "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/db-client"
+	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/peek"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 	"github.com/ethereum/go-ethereum/log"
@@ -25,11 +27,12 @@ func main() {
 
 	host := os.Getenv("HOST")
 	port := os.Getenv("PORT")
+	ipcPath := os.Getenv("IPC_PATH")
 
 	grpcClient := dbclient.NewClient(host, port)
 	grpcClient.GetAllDex()
 
-	fullNode := blockchain.NewConnection("/ipc/bor.ipc")
+	fullNode := blockchain.NewConnection(ipcPath)
 
 	newFullTx := make(chan *types.Transaction)
 
@@ -40,9 +43,10 @@ func main() {
 		panic(err)
 	}
 
-	for tx := range newFullTx {
-		fmt.Println(tx.Gas())
-	}
-	
+	scrapper := bot.NewScrapper(fullNode)
+	peek := peek.NewPeek(scrapper.Memory)
+	peek.StartPeek()
+	scrapper.LoadFromDb()
+	scrapper.StartScrapper()
 
 }
