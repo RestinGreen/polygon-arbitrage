@@ -42,13 +42,16 @@ func (p *Peek) StartPeek() {
 			select {
 			case stdin, _ := <-ch:
 				switch stdin {
-				case "l":
-					fmt.Println("There are", len(p.memory.PairMemory.Pairs), "pairs loaded in the memory.")
-				case "c":
-					fmt.Println("Factories: ", len(p.memory.DexMemory.Dexs))
-					for _, f := range p.memory.DexMemory.Dexs {
-						fmt.Println("Factory", f.Factory, "has", *f.NumPairs, "pairs.")
-					}
+				case "a":
+					p.printFactoryData()
+					p.printPairData()
+					p.printTokenData()
+				case "t":
+					p.printTokenData()
+				case "p":
+					p.printPairData()
+				case "f":
+					p.printFactoryData()
 				case "q":
 					exec.Command("stty", "-F", "/dev/tty", "echo").Run()
 
@@ -66,4 +69,19 @@ func (p *Peek) StartPeek() {
 		}
 
 	}()
+}
+
+func (p *Peek) printTokenData() {
+	fmt.Println("\nNumber of unique tokens: ", len(p.memory.TokenMemory.Tokens))
+}
+
+func (p *Peek) printPairData() {
+	fmt.Println("\nThere are", len(p.memory.PairMemory.Pairs), "pairs loaded in the memory.")
+}
+
+func (p *Peek) printFactoryData() {
+	fmt.Println("\nFactories: ", len(p.memory.DexMemory.Dexs))
+	for _, f := range p.memory.DexMemory.Dexs {
+		fmt.Println("Factory", f.Factory, "has", *f.NumPairs, "pairs.")
+	}
 }

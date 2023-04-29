@@ -27,7 +27,8 @@ func NewMemory() *Memory {
 			PairMutex: &sync.Mutex{},
 		},
 		TokenMemory: &TokenMemory{
-			Tokens: make([]*types.Token, 0),
+			Tokens: make(map[common.Address]*types.Token),
+			TokemMutex: &sync.Mutex{},
 		},
 	}
 }
@@ -62,4 +63,18 @@ func (m *Memory) AddPairStruct(pair *types.Pair) {
 		m.PairMemory.PairMap[*pair.PairAddress] = &key
 	}
 	m.PairMemory.MapMutex.Unlock()
+}
+
+func (m *Memory) AddToken(address *common.Address, symbol, name *string, decimal int) {
+
+	m.TokenMemory.TokemMutex.Lock()
+	if _, exists := m.TokenMemory.Tokens[*address]; !exists {
+		m.TokenMemory.Tokens[*address] = &types.Token{
+			Address: address,
+			Symbol: symbol,
+			Name: name,
+			Decimal: &decimal,
+		}
+	}
+	m.TokenMemory.TokemMutex.Unlock()
 }

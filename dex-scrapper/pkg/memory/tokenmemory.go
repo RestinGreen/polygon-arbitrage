@@ -1,7 +1,13 @@
 package memory
 
-import "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/types"
+import (
+	"sync"
+
+	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/types"
+	"github.com/ethereum/go-ethereum/common"
+)
 
 type TokenMemory struct {
-	Tokens []*types.Token
+	Tokens     map[common.Address]*types.Token
+	TokemMutex *sync.Mutex
 }

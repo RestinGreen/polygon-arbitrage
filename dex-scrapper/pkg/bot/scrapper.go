@@ -9,6 +9,7 @@ import (
 
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain/binding"
+	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain/binding/erc20"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/memory"
 	t "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -140,7 +141,7 @@ func (s *Scrapper) getPairData(pairAddress *common.Address, monthAgo1 time.Time)
 		fmt.Println("Failed to get reserves.")
 		fmt.Println(err)
 	}
-	
+
 	if reserves.Reserve0.Uint64() == 0 || reserves.Reserve1.Uint64() == 0 || time.Unix(int64(reserves.BlockTimestampLast), 0).Before(monthAgo1) {
 		return nil, false
 	}
@@ -149,11 +150,13 @@ func (s *Scrapper) getPairData(pairAddress *common.Address, monthAgo1 time.Time)
 		fmt.Println("Failed to read token0 from pair", pairAddress.Hex())
 		fmt.Println(err)
 	}
+	s.addTokenToMemory(&token0)
 	token1, err := pairContract.Token1(s.read)
 	if err != nil {
 		fmt.Println("Failed to read token1 from pair", pairAddress.Hex())
 		fmt.Println(err)
 	}
+	s.addTokenToMemory(&token1)
 	return &t.Pair{
 		PairAddress:   pairAddress,
 		Token0Address: &token0,
@@ -162,6 +165,34 @@ func (s *Scrapper) getPairData(pairAddress *common.Address, monthAgo1 time.Time)
 		Reserve1:      reserves.Reserve1,
 		LastUpdated:   &reserves.BlockTimestampLast,
 	}, true
+}
+
+func (s *Scrapper) addTokenToMemory(tokenAddress *common.Address) {
+	tokenContract, err := erc20.NewERC20(*tokenAddress, s.conn.EthClient)
+	if err != nil {
+		fmt.Println("Failed to create ERC220 contract binding.")
+		fmt.Println(err)
+		return
+	}
+	name, err := tokenContract.Name(s.read)
+	if err != nil {
+		fmt.Println("Failed to get token name.")
+		fmt.Println(err)
+		return
+	}
+	symbol, err := tokenContract.Symbol(s.read)
+	if err != nil {
+		fmt.Println("Failed to get token symbol.")
+		fmt.Println(err)
+		return
+	}
+	decimals, err := tokenContract.Decimals(s.read)
+	if err != nil {
+		fmt.Println("Failed to get token decimals.")
+		fmt.Println(err)
+		return
+	}
+	s.Memory.AddToken(tokenAddress, &symbol, &name, int(decimals))
 }
 
 func (s *Scrapper) LoadFromDb() {
