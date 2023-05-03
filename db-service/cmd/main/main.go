@@ -26,6 +26,6 @@ func main() {
 	password := os.Getenv("PGSQL_PASSWORD")
 	dbName := os.Getenv("PGSQL_DBNAME")
 
-	database.NewDB(host, port, user, password, dbName)
-	server.NewServer()
+	db := database.NewDB(host, port, user, password, dbName)
+	server.NewServer(db)
 }
