@@ -30,7 +30,6 @@ func main() {
 	ipcPath := os.Getenv("IPC_PATH")
 
 	grpcClient := dbclient.NewClient(host, port)
-	grpcClient.GetAllDex()
 
 	fullNode := blockchain.NewConnection(ipcPath)
 
@@ -43,7 +42,7 @@ func main() {
 		panic(err)
 	}
 
-	scrapper := bot.NewScrapper(fullNode)
+	scrapper := bot.NewScrapper(fullNode, grpcClient)
 	peek := peek.NewPeek(scrapper.Memory)
 	peek.StartPeek()
 	scrapper.LoadFromDb()

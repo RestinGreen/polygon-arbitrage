@@ -6,5 +6,5 @@ type Token struct {
 	Address *common.Address
 	Symbol  *string
 	Name    *string
-	Decimal *int
+	Decimal *int64
 }

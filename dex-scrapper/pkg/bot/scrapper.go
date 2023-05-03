@@ -10,6 +10,7 @@ import (
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain/binding"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/blockchain/binding/erc20"
+	dbclient "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/db-client"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/memory"
 	t "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -25,6 +26,8 @@ type Scrapper struct {
 	read    *bind.CallOpts
 	Memory  *memory.Memory
 
+	grpc *dbclient.GRPCClient
+
 	// keeps track of already loaded dex's
 	// true - reading data from chain
 	// false - dex is already loaded
@@ -37,13 +40,15 @@ type Scrapper struct {
 	univ2Methods *blockchain.UniV2Selector
 }
 
-func NewScrapper(conn *blockchain.Connection) *Scrapper {
+func NewScrapper(conn *blockchain.Connection, grpc *dbclient.GRPCClient) *Scrapper {
 
 	return &Scrapper{
 		conn:    conn,
 		binding: binding.NewBinding(conn.EthClient),
 		read:    &bind.CallOpts{Pending: false},
 		Memory:  memory.NewMemory(),
+
+		grpc: grpc,
 
 		dexTracker:   make(map[common.Address]bool),
 		dexTrackerMu: &sync.Mutex{},
@@ -77,11 +82,14 @@ func (s *Scrapper) StartScrapper() {
 		s.dexTrackerMu.Lock()
 		isLoading, exists := s.dexTracker[*routerAddress]
 		s.dexTrackerMu.Unlock()
-		if exists || isLoading {
+		if exists || isLoading{
 			continue
 		}
 		if !exists {
+			fmt.Println("new key: ", *routerAddress)
+			s.dexTrackerMu.Lock()
 			s.dexTracker[*routerAddress] = true
+			s.dexTrackerMu.Unlock()
 			go s.loadNewDexDataFromChain(routerAddress)
 		}
 
@@ -112,6 +120,7 @@ func (s *Scrapper) loadNewDexDataFromChain(routerAddress *common.Address) {
 		return
 	}
 
+	tmpPairs := make([]*t.Pair, 0)
 	numPairs := numPairsBn.Int64()
 	fmt.Println("Loading", numPairs, "pairs from factory", factoryAddress)
 	s.Memory.AddDex(routerAddress, &factoryAddress, &numPairs)
@@ -128,10 +137,12 @@ func (s *Scrapper) loadNewDexDataFromChain(routerAddress *common.Address) {
 		}
 		pairData.RouterAddress = routerAddress
 		s.Memory.AddPairStruct(pairData)
+		tmpPairs = append(tmpPairs, pairData)
 
 	}
 	fmt.Println("Loading", numPairs, "pairs for factory", factoryAddress, "finished")
 	s.dexTracker[*routerAddress] = false
+	s.grpc.InsertDex(s.Memory.DexMemory.Dexs[*routerAddress], tmpPairs)
 }
 
 func (s *Scrapper) getPairData(pairAddress *common.Address, monthAgo1 time.Time) (*t.Pair, bool) {
@@ -150,49 +161,67 @@ func (s *Scrapper) getPairData(pairAddress *common.Address, monthAgo1 time.Time)
 		fmt.Println("Failed to read token0 from pair", pairAddress.Hex())
 		fmt.Println(err)
 	}
-	s.addTokenToMemory(&token0)
+	newToken0 := s.addTokenToMemory(&token0)
+	if newToken0 == nil {
+		return nil, false
+	}
+
 	token1, err := pairContract.Token1(s.read)
 	if err != nil {
 		fmt.Println("Failed to read token1 from pair", pairAddress.Hex())
 		fmt.Println(err)
 	}
-	s.addTokenToMemory(&token1)
+	newToken1 := s.addTokenToMemory(&token1)
+	if newToken1 == nil {
+		return nil, false
+	}
+
+	lastTimestamp := int64(reserves.BlockTimestampLast)
+
 	return &t.Pair{
-		PairAddress:   pairAddress,
-		Token0Address: &token0,
-		Token1Address: &token1,
-		Reserve0:      reserves.Reserve0,
-		Reserve1:      reserves.Reserve1,
-		LastUpdated:   &reserves.BlockTimestampLast,
+		PairAddress: pairAddress,
+		Token0:      newToken0,
+		Token1:      newToken1,
+		Reserve0:    reserves.Reserve0,
+		Reserve1:    reserves.Reserve1,
+		LastUpdated: &lastTimestamp,
 	}, true
 }
 
-func (s *Scrapper) addTokenToMemory(tokenAddress *common.Address) {
+func (s *Scrapper) addTokenToMemory(tokenAddress *common.Address) *t.Token {
 	tokenContract, err := erc20.NewERC20(*tokenAddress, s.conn.EthClient)
 	if err != nil {
 		fmt.Println("Failed to create ERC220 contract binding.")
 		fmt.Println(err)
-		return
+		return nil
 	}
 	name, err := tokenContract.Name(s.read)
 	if err != nil {
 		fmt.Println("Failed to get token name.")
 		fmt.Println(err)
-		return
+		return nil
 	}
 	symbol, err := tokenContract.Symbol(s.read)
 	if err != nil {
 		fmt.Println("Failed to get token symbol.")
 		fmt.Println(err)
-		return
+		return nil
 	}
 	decimals, err := tokenContract.Decimals(s.read)
 	if err != nil {
 		fmt.Println("Failed to get token decimals.")
 		fmt.Println(err)
-		return
+		return nil
 	}
-	s.Memory.AddToken(tokenAddress, &symbol, &name, int(decimals))
+	dec := int64(decimals)
+	newToken := &t.Token{
+		Address: tokenAddress,
+		Symbol:  &symbol,
+		Name:    &name,
+		Decimal: &dec,
+	}
+	s.Memory.AddTokenStruct(newToken)
+	return newToken
 }
 
 func (s *Scrapper) LoadFromDb() {

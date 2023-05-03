@@ -3,7 +3,7 @@ module github.com/Restingreen/polygon-arbitrage/dex-scrapper
 go 1.20
 
 require (
-	github.com/RestinGreen/protobuf v0.0.0-20230420214704-7475bac73ffa
+	github.com/RestinGreen/protobuf v0.0.2
 	github.com/ethereum/go-ethereum v1.11.6
 	github.com/joho/godotenv v1.5.1
 	google.golang.org/grpc v1.54.0

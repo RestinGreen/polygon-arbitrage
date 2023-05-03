@@ -27,7 +27,7 @@ func NewMemory() *Memory {
 			PairMutex: &sync.Mutex{},
 		},
 		TokenMemory: &TokenMemory{
-			Tokens: make(map[common.Address]*types.Token),
+			Tokens:     make(map[common.Address]*types.Token),
 			TokemMutex: &sync.Mutex{},
 		},
 	}
@@ -50,7 +50,7 @@ func (m *Memory) AddDex(router, factory *common.Address, numPairs *int64) {
 func (m *Memory) AddPairStruct(pair *types.Pair) {
 
 	//sorted, router + token0 + token1 is the key
-	key := pair.RouterAddress.Hex() + pair.Token0Address.Hex() + pair.Token1Address.Hex()
+	key := pair.RouterAddress.Hex() + pair.Token0.Address.Hex() + pair.Token1.Address.Hex()
 
 	m.PairMemory.PairMutex.Lock()
 	if _, exists := m.PairMemory.Pairs[key]; !exists {
@@ -65,16 +65,22 @@ func (m *Memory) AddPairStruct(pair *types.Pair) {
 	m.PairMemory.MapMutex.Unlock()
 }
 
-func (m *Memory) AddToken(address *common.Address, symbol, name *string, decimal int) {
-
+func (m *Memory) AddTokenStruct(token *types.Token) {
 	m.TokenMemory.TokemMutex.Lock()
-	if _, exists := m.TokenMemory.Tokens[*address]; !exists {
-		m.TokenMemory.Tokens[*address] = &types.Token{
-			Address: address,
-			Symbol: symbol,
-			Name: name,
-			Decimal: &decimal,
-		}
-	}
+	m.TokenMemory.Tokens[*token.Address] = token
 	m.TokenMemory.TokemMutex.Unlock()
 }
+
+// func (m *Memory) AddToken(address *common.Address, symbol, name *string, decimal int) {
+
+// 	m.TokenMemory.TokemMutex.Lock()
+// 	if _, exists := m.TokenMemory.Tokens[*address]; !exists {
+// 		m.TokenMemory.Tokens[*address] = &types.Token{
+// 			Address: address,
+// 			Symbol:  symbol,
+// 			Name:    name,
+// 			Decimal: &decimal,
+// 		}
+// 	}
+// 	m.TokenMemory.TokemMutex.Unlock()
+// }
