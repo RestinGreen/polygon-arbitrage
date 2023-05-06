@@ -46,6 +46,8 @@ func (p *Peek) StartPeek() {
 					p.printFactoryData()
 					p.printPairData()
 					p.printTokenData()
+				case "r":
+					p.printRouterData()
 				case "t":
 					p.printTokenData()
 				case "p":
@@ -83,5 +85,12 @@ func (p *Peek) printFactoryData() {
 	fmt.Println("\nFactories: ", len(p.memory.DexMemory.Dexs))
 	for _, f := range p.memory.DexMemory.Dexs {
 		fmt.Println("Factory", f.Factory, "has", *f.NumPairs, "pairs.")
+	}
+}
+
+func (p *Peek) printRouterData() {
+	fmt.Println("Routers: ", len(p.memory.DexMemory.Dexs))
+	for _, f := range p.memory.DexMemory.Dexs {
+		fmt.Println("Router", f.Router, "has", *f.NumPairs, "pairs.")
 	}
 }

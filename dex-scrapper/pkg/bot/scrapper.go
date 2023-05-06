@@ -13,6 +13,7 @@ import (
 	dbclient "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/db-client"
 	"github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/memory"
 	t "github.com/Restingreen/polygon-arbitrage/dex-scrapper/pkg/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -21,15 +22,16 @@ import (
 )
 
 type Scrapper struct {
-	conn    *blockchain.Connection
-	binding *binding.Binding
-	read    *bind.CallOpts
-	Memory  *memory.Memory
+	conn          *blockchain.Connection
+	binding       *binding.Binding
+	read          *bind.CallOpts
+	Memory        *memory.Memory
+	syncWatchList []common.Address
 
 	grpc *dbclient.GRPCClient
 
 	// keeps track of already loaded dex's
-	// true - reading data from chain
+	// true - currently reading data from chain
 	// false - dex is already loaded
 	// nil - need to load dex
 	// key is router address
@@ -82,7 +84,7 @@ func (s *Scrapper) StartScrapper() {
 		s.dexTrackerMu.Lock()
 		isLoading, exists := s.dexTracker[*routerAddress]
 		s.dexTrackerMu.Unlock()
-		if exists || isLoading{
+		if exists || isLoading {
 			continue
 		}
 		if !exists {
@@ -228,5 +230,97 @@ func (s *Scrapper) LoadFromDb() {
 
 	fmt.Println("Loading from database started")
 
+	dexs := s.grpc.GetAllDex()
+
+	for _, dex := range dexs {
+		dexAddress := common.HexToAddress(dex.RouterAddress)
+		factoryAddress := common.HexToAddress(dex.FactoryAddress)
+		routerAddress := common.HexToAddress(dex.RouterAddress)
+		s.dexTracker[routerAddress] = false
+		s.Memory.DexMemory.Dexs[dexAddress] = &t.Dex{
+			Factory:  &factoryAddress,
+			Router:   &routerAddress,
+			NumPairs: &dex.NumPairs,
+		}
+		for _, pair := range dex.Pairs {
+			key := dex.RouterAddress + pair.Token0.Address + pair.Token1.Address
+			pairAddress := common.HexToAddress(pair.Address)
+			token0Address := common.HexToAddress(pair.Token0.Address)
+			token1Address := common.HexToAddress(pair.Token1.Address)
+			token0 := &t.Token{
+				Address: &token0Address,
+				Name:    &pair.Token0.Name,
+				Symbol:  &pair.Token0.Symbol,
+				Decimal: &pair.Token0.Decimal,
+			}
+			token1 := &t.Token{
+				Address: &token1Address,
+				Name:    &pair.Token1.Name,
+				Symbol:  &pair.Token1.Symbol,
+				Decimal: &pair.Token1.Decimal,
+			}
+			s.Memory.PairMemory.Pairs[key] = &t.Pair{
+				PairAddress:   &pairAddress,
+				RouterAddress: &routerAddress,
+				Reserve0:      new(big.Int).SetBytes(pair.Reserve0),
+				Reserve1:      new(big.Int).SetBytes(pair.Reserve1),
+				LastUpdated:   &pair.LastUpdated,
+				Token0:        token0,
+				Token1:        token1,
+			}
+			s.Memory.PairMemory.PairMap[pairAddress] = &key
+			s.Memory.TokenMemory.Tokens[token0Address] = token0
+			s.Memory.TokenMemory.Tokens[token1Address] = token1
+		}
+	}
+
 	fmt.Println("Loading from database finished")
+}
+
+func (s *Scrapper) ListenPairSyncEvents() {
+
+	for _, pair := range s.Memory.PairMemory.Pairs {
+		s.syncWatchList = append(s.syncWatchList, *pair.PairAddress)
+	}
+	fmt.Println("There are", len(s.syncWatchList), "pairs to watch for reserve updates.")
+
+	query := ethereum.FilterQuery{
+		Addresses: s.syncWatchList,
+		Topics:    [][]common.Hash{{common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1")}},
+	}
+
+	logsCh := make(chan types.Log)
+
+	subscribtion, err := s.conn.EthClient.SubscribeFilterLogs(context.Background(), query, logsCh)
+	if err != nil {
+		fmt.Println("Error subscribing to events.")
+		panic(err)
+	}
+
+	for {
+		select {
+		case err := <-subscribtion.Err():
+			panic(err)
+		case log := <-logsCh:
+			b, err := s.conn.EthClient.BlockByHash(context.Background(), log.BlockHash)
+			if err != nil {
+				fmt.Println("Failed to get block by hash")
+			}
+			r0 := new(big.Int).SetBytes(log.Data[0:32])
+			r1 := new(big.Int).SetBytes(log.Data[32:64])
+			timestamp := int64(b.Time())
+
+			key := s.Memory.PairMemory.PairMap[log.Address]
+			s.Memory.PairMemory.Pairs[*key].Reserve0 = r0
+			s.Memory.PairMemory.Pairs[*key].Reserve1 = r1
+			s.Memory.PairMemory.Pairs[*key].LastUpdated = &timestamp
+			
+			go s.grpc.UpdatePair(log.Address.Hex(), r0.Bytes(), r1.Bytes(), &timestamp)
+			fmt.Println("Pair", log.Address, "updated in block", log.BlockNumber)
+		}
+	}
+}
+
+func (s *Scrapper) UpdateExistingDexData() {
+
 }

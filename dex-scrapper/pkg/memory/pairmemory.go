@@ -12,7 +12,7 @@ type PairMemory struct {
 	PairMap map[common.Address]*string
 	MapMutex *sync.Mutex
 
-	//key is t0+t1+router -> pair data
+	//key is router+t0+t1 -> pair data
 	Pairs     map[string]*types.Pair
 	PairMutex *sync.Mutex
 }

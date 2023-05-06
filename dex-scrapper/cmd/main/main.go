@@ -46,6 +46,8 @@ func main() {
 	peek := peek.NewPeek(scrapper.Memory)
 	peek.StartPeek()
 	scrapper.LoadFromDb()
+	go scrapper.ListenPairSyncEvents()
+	go scrapper.UpdateExistingDexData()
 	scrapper.StartScrapper()
 
 }
