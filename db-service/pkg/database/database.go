@@ -222,3 +222,22 @@ func (db *Database) GetAllDex() ([]*generated.Dex, bool) {
 	fmt.Println("Finished loading all dex data from database.")
 	return dexs, true
 }
+
+func (db *Database) UpdatePair(pairAddress string, reserve0, reserve1 []byte, lastUpdated *int64) {
+
+	r0 := new(big.Int).SetBytes(reserve0)
+	r1 := new(big.Int).SetBytes(reserve1)
+
+	query := `
+		UPDATE pairs 
+		SET reserve0=$1, reserve1=$2, last_updated=$3
+		where pair_address=$4
+	`
+	_, err := db.db.Exec(query, r0.String(), r1.String(), *lastUpdated, pairAddress)
+	if err != nil {
+		fmt.Println("Error updating pair.", err)
+		return
+	}
+	fmt.Println("Pair ", pairAddress, "updated.")
+
+}

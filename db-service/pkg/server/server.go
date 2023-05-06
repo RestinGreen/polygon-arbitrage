@@ -19,17 +19,16 @@ type Server struct {
 
 func NewServer(db *database.Database) {
 
-
 	port := flag.Int("port", 50051, "The server port")
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	
+
 	pb.RegisterDatabaseServer(s, &Server{DB: db})
 	log.Printf("server listening at %v", lis.Addr())
-	
+
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
@@ -43,15 +42,17 @@ func (s *Server) GetAllDex(ctx context.Context, in *pb.GetAllDexRequest) (*pb.Ge
 	}, nil
 }
 
-func (s *Server) InsertDex(ctx context.Context, in *pb.Dex) (*pb.InsertDexResponse, error) {
+func (s *Server) InsertDex(ctx context.Context, in *pb.InsertDexRequest) (*pb.InsertDexResponse, error) {
 	fmt.Println("Inserting dex into database")
-	fmt.Println("factory: ", in.FactoryAddress)
-	fmt.Println("routerr: ", in.RouterAddress)
-	fmt.Println("num pairs: ", in.NumPairs)
-	fmt.Println("number of actual pairs: ", len(in.Pairs))
 
-	s.DB.InsertDex(&in.FactoryAddress, &in.RouterAddress, &in.NumPairs, in.Pairs)
-
+	s.DB.InsertDex(&in.Dex.FactoryAddress, &in.Dex.RouterAddress, &in.Dex.NumPairs, in.Dex.Pairs)
 
 	return &pb.InsertDexResponse{}, nil
+}
+
+func (s *Server) UpdatePair(ctx context.Context, in *pb.UpdatePairRequest) (*pb.UpdatePairResponse, error) {
+
+	s.DB.UpdatePair(in.Address, in.Reserve0, in.Reserve1, &in.LastUpdated)
+
+	return &pb.UpdatePairResponse{}, nil
 }
