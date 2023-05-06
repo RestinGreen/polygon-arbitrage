@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/RestinGreen/protobuf/generated"
-	"github.com/ethereum/go-ethereum/common"
 	_ "github.com/lib/pq"
 )
 
@@ -53,7 +52,6 @@ func (db *Database) InsertDex(factoryAddress, routerAddress *string, numPairs *i
 	for _, pair := range pairs {
 		r0 := new(big.Int).SetBytes(pair.Reserve0)
 		r1 := new(big.Int).SetBytes(pair.Reserve1)
-
 
 		var token0Id, token1Id int
 
@@ -111,45 +109,116 @@ func (db *Database) InsertDex(factoryAddress, routerAddress *string, numPairs *i
 
 }
 
-func (db *Database) GetAllDex() {
+func (db *Database) GetAllDex() ([]*generated.Dex, bool) {
 
-	query := `
-	SELECT p.pair_address, p.reserve0, p.reserve1, p.last_updated, t0.address, t0.symbol, t0.name, t0.decimal, t1.address, t1.symbol, t1.name, t1.decimal, d.factory_address, d.router_address, d.num_pairs 
-	FROM pairs p 
-	JOIN tokens t0 ON p.token0_id=t0.id 
-	JOIN tokens t1 ON t1.id=p.token1_id 
-	JOIN dexs d ON d.id = p.dex_id;
+	var dexs []*generated.Dex
+	dexQuery := `
+	SELECT id, factory_address, router_address, num_pairs FROM dexs;
 	`
-	rows, err := db.db.Query(query)
+	dexRows, err := db.db.Query(dexQuery)
 	if err != nil {
-		fmt.Println("Error in querying Pairs for Dex.", err)
+		fmt.Println("Failed to query dex rows in GetAllDex.\n", err)
+		return nil, false
 	}
 
-	var dex []*generated.Dex
-
-	for rows.Next() {
-		var pairAddress, reserve0, reserve1, t0Address, t1Address, t0Symbol, t1Symbol, t0Name, t1Name, factoryAddress, routerAddress string
-		var lastUpdated, t0Decimal, t1Decimal, numPairs uint64
-		if err := rows.Scan(&pairAddress, &reserve0, &reserve1, &lastUpdated, &t0Address, &t0Symbol, &t0Name, t0Decimal, &t1Address, &t1Symbol, &t1Name, &t1Decimal, &factoryAddress, &routerAddress, &numPairs); err != nil {
-			fmt.Println("Error in scanning rows in 'GetPair'.", err)
-			return
+	for dexRows.Next() {
+		var dexId, numPairs int64
+		var factoryAddress, routerAddress string
+		if err := dexRows.Scan(&dexId, &factoryAddress, &routerAddress, &numPairs); err != nil {
+			fmt.Println("Error scanning dex row in GetAlLDex\n", err)
+			return nil, false
 		}
-		pa := common.HexToAddress(pairAddress)
-		r0, _ := new(big.Int).SetString(reserve0, 10)
-		r1, _ := new(big.Int).SetString(reserve1, 10)
-		t0A := common.HexToAddress(t0Address)
-		t1A := common.HexToAddress(t1Address)
-		fA := common.HexToAddress(factoryAddress)
-		rA := common.HexToAddress(routerAddress)
-	
 
-		
-		dex = append(dex, &generated.Dex{
-			
-		})
+		dex := &generated.Dex{
+			FactoryAddress: factoryAddress,
+			RouterAddress:  routerAddress,
+			NumPairs:       numPairs,
+			Pairs:          make([]*generated.Pair, 0),
+		}
+
+		pairQuery := `
+		SELECT pair_address, reserve0, reserve1, last_updated, token0_id, token1_id 
+		FROM pairs
+		WHERE dex_id = $1;
+		`
+		pairRows, err := db.db.Query(pairQuery, dexId)
+		if err != nil {
+			fmt.Println("Failed to query pair rows in GetAllDex.\n", err)
+		}
+
+		for pairRows.Next() {
+
+			pair := &generated.Pair{}
+
+			var pairAddress, reserve0, reserve1 string
+			var lastUpdated, token0ID, token1ID int64
+			if err := pairRows.Scan(&pairAddress, &reserve0, &reserve1, &lastUpdated, &token0ID, &token1ID); err != nil {
+				fmt.Println("Error scanning pair row in GetAlLDex\n", err)
+				return nil, false
+			}
+
+			r0, _ := new(big.Int).SetString(reserve0, 10)
+			r1, _ := new(big.Int).SetString(reserve1, 10)
+
+			pair.Address = pairAddress
+			pair.Reserve0 = r0.Bytes()
+			pair.Reserve1 = r1.Bytes()
+			pair.LastUpdated = lastUpdated
+
+			token0Query := `
+			SELECT address, symbol, name, decimal
+			FROM tokens
+			WHERE id=$1;
+			`
+			token0Rows, err := db.db.Query(token0Query, token0ID)
+			if err != nil {
+				fmt.Println("Failed to query token0 rows in GetAllDex.\n", err)
+			}
+			for token0Rows.Next() {
+				var address, symbol, name string
+				var decimal int64
+				if err := token0Rows.Scan(&address, &symbol, &name, &decimal); err != nil {
+					fmt.Println("Error scanning token0 row in GetAllDex.\n", err)
+					return nil, false
+				}
+				pair.Token0 = &generated.Token{
+					Address: address,
+					Symbol:  symbol,
+					Name:    name,
+					Decimal: decimal,
+				}
+
+			}
+			token1Query := `
+			SELECT address, symbol, name, decimal
+			FROM tokens
+			WHERE id=$1
+			`
+			token1Rows, err := db.db.Query(token1Query, token1ID)
+			if err != nil {
+				fmt.Println("Failed to quert token1 rows in GetAllDex.\n", err)
+			}
+			for token1Rows.Next() {
+				var address, symbol, name string
+				var decimal int64
+				if err := token1Rows.Scan(&address, &symbol, &name, &decimal); err != nil {
+					fmt.Println("Error scanning token1 row in GetAllDex.\n", err)
+					return nil, false
+				}
+				pair.Token1 = &generated.Token{
+					Address: address,
+					Symbol:  symbol,
+					Name:    name,
+					Decimal: decimal,
+				}
+			}
+
+			dex.Pairs = append(dex.Pairs, pair)
+
+		}
+		dexs = append(dexs, dex)
+
 	}
-	if err := rows.Err(); err != nil {
-		fmt.Println("Error in reading 'GetPair' rows.", err)
-		return
-	}
+	fmt.Println("Finished loading all dex data from database.")
+	return dexs, true
 }

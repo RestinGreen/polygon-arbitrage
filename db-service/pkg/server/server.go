@@ -36,9 +36,10 @@ func NewServer(db *database.Database) {
 }
 
 func (s *Server) GetAllDex(ctx context.Context, in *pb.GetAllDexRequest) (*pb.GetAllDexResponse, error) {
-	fmt.Println("getall invoked")
+	fmt.Println("GetAllDex invoked")
+	dexs, _ := s.DB.GetAllDex()
 	return &pb.GetAllDexResponse{
-		
+		Dexs: dexs,
 	}, nil
 }
 
