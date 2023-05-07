@@ -241,3 +241,28 @@ func (db *Database) UpdatePair(pairAddress string, reserve0, reserve1 []byte, la
 	fmt.Println("Pair ", pairAddress, "updated.")
 
 }
+
+func (db *Database) RemovePair(pairAddress string) {
+	removeQuery := `
+	DELETE FROM pairs
+	WHERE pair_address like $1
+	`
+	_, err := db.db.Exec(removeQuery, pairAddress)
+	if err != nil {
+		fmt.Println("Failed to remove pair ", pairAddress, "from the database.")
+		fmt.Println(err)
+	}
+}
+
+func (db *Database) RemoveToken(tokenAddress string) {
+	removeQuery := `
+	DELETE FROM tokens
+	WHERE address like $1
+	`
+	_, err := db.db.Exec(removeQuery, tokenAddress)
+	if err != nil {
+		fmt.Println("Failed to remove token ", tokenAddress, "from the database.")
+		fmt.Println(err)
+	}
+}
+

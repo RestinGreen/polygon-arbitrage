@@ -56,3 +56,16 @@ func (s *Server) UpdatePair(ctx context.Context, in *pb.UpdatePairRequest) (*pb.
 
 	return &pb.UpdatePairResponse{}, nil
 }
+
+func (s *Server) RemovePair(ctx context.Context, in *pb.RemovePairRequest) (*pb.RemovePairResponse, error) {
+	
+	s.DB.RemovePair(in.Address)
+
+	return &pb.RemovePairResponse{}, nil
+}
+
+func (s *Server) RemoveToken(ctx context.Context, in *pb.RemoveTokenRequest) (*pb.RemoveTokenResponse, error) {
+	s.DB.RemoveToken(in.Address)
+
+	return &pb.RemoveTokenResponse{}, nil
+}

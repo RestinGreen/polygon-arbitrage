@@ -3,7 +3,7 @@ module github.com/RestinGreen/polygon-arbitrage/db-service
 go 1.20
 
 require (
-	github.com/RestinGreen/protobuf v0.0.3
+	github.com/RestinGreen/protobuf v0.0.4
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	google.golang.org/grpc v1.55.0
