@@ -92,16 +92,40 @@ func (c *GRPCClient) UpdatePair(pairAddress string, reserve0, reserve1 []byte, l
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-
 	_, err := c.client.UpdatePair(ctx, &pb.UpdatePairRequest{
-		Address: pairAddress,
-		Reserve0: reserve0,
-		Reserve1: reserve1,
+		Address:     pairAddress,
+		Reserve0:    reserve0,
+		Reserve1:    reserve1,
 		LastUpdated: *lastUpdated,
-
 	})
 	if err != nil {
-		fmt.Println("Failed pair update.\n", err)
-		return 
+		fmt.Println("Failed pair update pair ", pairAddress, ".\n", err)
+		return
+	}
+}
+
+func (c *GRPCClient) RemovePair(pairAddress string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := c.client.RemovePair(ctx, &pb.RemovePairRequest{
+		Address: pairAddress,
+	})
+	if err != nil {
+		fmt.Println("Failed to remove pair ", pairAddress, ".\n", err)
+		return
+	}
+}
+
+func (c *GRPCClient) RemoveToken(tokenAddress string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := c.client.RemoveToken(ctx, &pb.RemoveTokenRequest{
+		Address: tokenAddress,
+	})
+	if err != nil {
+		fmt.Println("Failed to remove token ", tokenAddress, ".\n", err)
+		return
 	}
 }

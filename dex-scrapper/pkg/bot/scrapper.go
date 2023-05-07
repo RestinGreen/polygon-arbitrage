@@ -49,6 +49,7 @@ func NewScrapper(conn *blockchain.Connection, grpc *dbclient.GRPCClient) *Scrapp
 		binding: binding.NewBinding(conn.EthClient),
 		read:    &bind.CallOpts{Pending: false},
 		Memory:  memory.NewMemory(),
+		syncWatchList: make([]common.Address, 0),
 
 		grpc: grpc,
 
@@ -236,6 +237,10 @@ func (s *Scrapper) LoadFromDb() {
 		dexAddress := common.HexToAddress(dex.RouterAddress)
 		factoryAddress := common.HexToAddress(dex.FactoryAddress)
 		routerAddress := common.HexToAddress(dex.RouterAddress)
+
+		s.binding.AddFactoryContract(&factoryAddress)
+		s.binding.AddRouterContract(&routerAddress)
+
 		s.dexTracker[routerAddress] = false
 		s.Memory.DexMemory.Dexs[dexAddress] = &t.Dex{
 			Factory:  &factoryAddress,
@@ -247,6 +252,11 @@ func (s *Scrapper) LoadFromDb() {
 			pairAddress := common.HexToAddress(pair.Address)
 			token0Address := common.HexToAddress(pair.Token0.Address)
 			token1Address := common.HexToAddress(pair.Token1.Address)
+
+			s.binding.AddPairContract(&pairAddress)
+			s.binding.AddTokenContract(&token0Address)
+			s.binding.AddTokenContract(&token1Address)
+
 			token0 := &t.Token{
 				Address: &token0Address,
 				Name:    &pair.Token0.Name,
@@ -314,7 +324,7 @@ func (s *Scrapper) ListenPairSyncEvents() {
 			s.Memory.PairMemory.Pairs[*key].Reserve0 = r0
 			s.Memory.PairMemory.Pairs[*key].Reserve1 = r1
 			s.Memory.PairMemory.Pairs[*key].LastUpdated = &timestamp
-			
+
 			go s.grpc.UpdatePair(log.Address.Hex(), r0.Bytes(), r1.Bytes(), &timestamp)
 			fmt.Println("Pair", log.Address, "updated in block", log.BlockNumber)
 		}
@@ -322,5 +332,79 @@ func (s *Scrapper) ListenPairSyncEvents() {
 }
 
 func (s *Scrapper) UpdateExistingDexData() {
+	fmt.Println("Refreshing started.")
+
+	for _, pair := range s.Memory.PairMemory.Pairs {
+		newPairData, err := s.binding.GetPairContract(*pair.PairAddress).GetReserves(s.read)
+		if err != nil {
+			fmt.Println("Failed to get reservers in refreshing.", err)
+			continue
+		}
+		go func(pair *t.Pair) {
+			if *pair.LastUpdated < (int64)(newPairData.BlockTimestampLast) {
+				fmt.Println("Refreshing pair", *pair.PairAddress)
+				s.Memory.PairMemory.PairMutex.Lock()
+				pair.Reserve0 = newPairData.Reserve0
+				pair.Reserve1 = newPairData.Reserve1
+				lastUpdated := (int64)(newPairData.BlockTimestampLast)
+				pair.LastUpdated = &lastUpdated
+				s.Memory.PairMemory.PairMutex.Unlock()
+				s.grpc.UpdatePair(pair.PairAddress.Hex(), pair.Reserve0.Bytes(), pair.Reserve1.Bytes(), pair.LastUpdated)
+			}
+		}(pair)
+	}
+
+	fmt.Println("Refreshing finished.")
+}
+
+func (s *Scrapper) Cleanse() {
+
+	fmt.Println("Nr. of tokens: ", len(s.Memory.TokenMemory.Tokens))
+	fmt.Println("Nr. or pairs: ", len(s.Memory.PairMemory.Pairs))
+
+	tokenUsage := make(map[common.Address]int64)
+
+	for _, pairData := range s.Memory.PairMemory.Pairs {
+		tokenUsage[*pairData.Token0.Address]++
+		tokenUsage[*pairData.Token1.Address]++
+	}
+
+	only1 := 0
+	for _, v := range tokenUsage {
+		if v == 1 {
+			only1++
+		}
+	}
+	fmt.Println("Tokens that are present in only 1 pair and will be deleted: ", only1)
+
+	pairGo := 0
+	for _, pairData := range s.Memory.PairMemory.Pairs {
+		if tokenUsage[*pairData.Token0.Address] == 1 || tokenUsage[*pairData.Token1.Address] == 1 {
+			pairGo++
+		}
+	}
+	fmt.Println("Pairs that will be deleted because token is useless: ", pairGo)
+	fmt.Println("Deleting...")
+
+	for _, pairData := range s.Memory.PairMemory.Pairs {
+		if tokenUsage[*pairData.Token0.Address] == 1 || tokenUsage[*pairData.Token1.Address] == 1 {
+			key := pairData.RouterAddress.Hex() + pairData.Token0.Address.Hex() + pairData.Token1.Address.Hex()
+			s.grpc.RemovePair(pairData.PairAddress.Hex())
+			// s.Memory.PairMemory.Pairs[key] = nil
+			delete(s.Memory.PairMemory.Pairs, key)
+			// s.Memory.PairMemory.PairMap[*pairData.PairAddress] = nil
+			delete(s.Memory.PairMemory.PairMap, *pairData.PairAddress)
+		}
+	}
+
+	for k, v := range tokenUsage {
+		if v == 1 {
+			s.grpc.RemoveToken(k.Hex())
+			// s.Memory.TokenMemory.Tokens[k] = nil
+			delete(s.Memory.TokenMemory.Tokens, k)
+		}
+	}
+
+	fmt.Println("Completed.")
 
 }

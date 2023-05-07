@@ -9,7 +9,7 @@
 4. Remove old docker image and container
     - docker rm dex-scrapper && docker rmi dex-scrapper
 5. Clear old + build and run
-    - docker rm dex-scrapper && docker rmi dex-scrapper && docker build -t dex-scrapper . && docker run --network host --name dex-scrapper -v /root/polygon/execution/data:/ipc dex-scrapper
+    - docker rm dex-scrapper && docker rmi dex-scrapper && docker build -t dex-scrapper . && docker run --network host --name dex-scrapper -v /root/polygon/execution/data:/ipc - it dex-scrapper
 
 # The .env file
 

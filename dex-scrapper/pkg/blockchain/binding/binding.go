@@ -36,9 +36,10 @@ func NewBinding(ethClient *ethclient.Client) *Binding {
 		factoriesMutex: &sync.Mutex{},
 		tokensMutex:    &sync.Mutex{},
 
-		pairs:     map[common.Address]*univ2pair.UniV2Pair{},
-		Routers:   map[common.Address]*univ2router.UniV2Router{},
-		Factories: map[common.Address]*univ2factory.UniV2Factory{},
+		pairs:     make(map[common.Address]*univ2pair.UniV2Pair),
+		Routers:   make(map[common.Address]*univ2router.UniV2Router),
+		Factories: make(map[common.Address]*univ2factory.UniV2Factory),
+		Tokens:    make(map[common.Address]*erc20.ERC20),
 	}
 }
 
