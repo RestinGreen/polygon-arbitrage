@@ -320,7 +320,10 @@ func (s *Scrapper) ListenPairSyncEvents() {
 			r1 := new(big.Int).SetBytes(log.Data[32:64])
 			timestamp := int64(b.Time())
 
-			key := s.Memory.PairMemory.PairMap[log.Address]
+			key, ok := s.Memory.PairMemory.PairMap[log.Address]
+			if ! ok {
+				continue
+			}
 			s.Memory.PairMemory.Pairs[*key].Reserve0 = r0
 			s.Memory.PairMemory.Pairs[*key].Reserve1 = r1
 			s.Memory.PairMemory.Pairs[*key].LastUpdated = &timestamp

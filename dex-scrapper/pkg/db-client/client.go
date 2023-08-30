@@ -21,9 +21,12 @@ type GRPCClient struct {
 func NewClient(host, port string) *GRPCClient {
 
 	conn, err := grpc.Dial(host+":"+port, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
+
+	log.Println("connected to grpc server")
 
 	dbClinet := pb.NewDatabaseClient(conn)
 

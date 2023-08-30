@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -17,10 +16,10 @@ type Server struct {
 	DB *database.Database
 }
 
-func NewServer(db *database.Database) {
+func NewServer(db *database.Database, _host, _port string) {
 
-	port := flag.Int("port", 50051, "The server port")
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// port := flag.Int("port", 50051, "The server port")
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%s", _host, _port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -58,7 +57,7 @@ func (s *Server) UpdatePair(ctx context.Context, in *pb.UpdatePairRequest) (*pb.
 }
 
 func (s *Server) RemovePair(ctx context.Context, in *pb.RemovePairRequest) (*pb.RemovePairResponse, error) {
-	
+
 	s.DB.RemovePair(in.Address)
 
 	return &pb.RemovePairResponse{}, nil

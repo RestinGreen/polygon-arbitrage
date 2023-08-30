@@ -19,4 +19,9 @@ echo $PGSQL_PASSWORD | psql -d $PGSQL_DBNAME -f /init/sql/pairs.sql -U $PGSQL_US
 pg_ctl -V ON_ERROR_STOP=1 
 pg_ctl -D "/var/lib/postgresql/data" -m fast -w stop
 
+# Add an entry to pg_hba.conf to allow login with password
+echo "host all all $PGSQL_CLIENT/24 md5" >> /var/lib/postgresql/data/pg_hba.conf
+# Restart PostgreSQL to apply changes
+service postgresql restart
+
 exec "$@"

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/RestinGreen/protobuf/generated"
 	_ "github.com/lib/pq"
@@ -14,18 +15,30 @@ type Database struct {
 }
 
 func NewDB(host, port, user, psw, dbName string) *Database {
-
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, psw, dbName)
-
+	fmt.Println("commection string: ", connStr)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("Login credentials are valid.")
 
-	err = db.Ping()
-	if err != nil {
-		panic(err)
+	timeout := 30
+	i := 0
+	for i = 1; i <= timeout; {
+		err = db.Ping()
+		if err != nil {
+			fmt.Println("waiting for pgsql server to start...")
+			fmt.Println(err)
+			i += 2
+			time.Sleep(time.Second * 2)
+		} else {
+			break
+		}
+
+	}
+	if i >= timeout {
+		panic("pgsql server connection timeout")
 	}
 	fmt.Println("Connected to postgres database")
 

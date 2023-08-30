@@ -1,6 +1,6 @@
 version: '3'
+###############################################################
 services:
-
   database:
     image: database
     container_name: database
@@ -8,26 +8,66 @@ services:
       context: ./database
       dockerfile: Dockerfile
     networks:
-      - database-network
+      database_network:
+        ipv4_address: 172.16.238.10
     ports:
       - 5432:5432
     env_file:
       - ./database/.env
-
-
+    environment:
+      - PGSQL_CLIENT=172.16.238.11
+###############################################################
   db-service:
     image: db-service
     container_name: db-service
     build: 
       context: ./db-service
       dockerfile: Dockerfile
+    ports:
+      - 50051:50051
     networks:
-      - database-network
+      database_network:
+        ipv4_address: 172.16.238.11
+      grpc-network:
+        ipv4_address: 192.168.2.66
     env_file:
       - ./db-service/.env
+    environment:
+      - PGSQL_HOST=172.16.238.10
+      - GRPC_HOST=192.168.2.66
+      - GRPC_PORT=50051
     depends_on:
       - database
+###############################################################
+  dex-scrapper:
+    image: dex-scrapper
+    container_name: dex-scrapper
+    build: 
+      context: ./dex-scrapper
+      dockerfile: Dockerfile
+    networks:
+      grpc-network:
+        ipv4_address: 192.168.2.67
+    env_file:
+      - ./dex-scrapper/.env
+    environment:
+      - GRPC_HOST=192.168.2.66
+      - GRPC_PORT=50051
+    depends_on:
+      - db-service
+###############################################################
 networks:
-  database-network:
-    name: database-network
-    driver: bridge
+  database_network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.238.0/24
+  grpc-network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.2.64/26
+
+
+
+    

@@ -25,13 +25,14 @@ func init() {
 
 func main() {
 
-	host := os.Getenv("HOST")
-	port := os.Getenv("PORT")
-	ipcPath := os.Getenv("IPC_PATH")
+	host := os.Getenv("GRPC_HOST")
+	port := os.Getenv("GRPC_PORT")
+	endpoint := os.Getenv("ENDPOINT")
 
 	grpcClient := dbclient.NewClient(host, port)
 
-	fullNode := blockchain.NewConnection(ipcPath)
+
+	fullNode := blockchain.NewConnection(endpoint)
 
 	newFullTx := make(chan *types.Transaction)
 
